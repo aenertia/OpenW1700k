@@ -4,11 +4,7 @@ Date: Wed, 3 Sep 2025 03:24:08 +0200
 Subject: [PATCH 2/4] net: phy: mediatek: move MTK GE SoC registers define to
  dedicated header
 
-In preparation for support of special Software Calibration for Airoha
-PHY, move the MTK GE SoC registers define to a dedicated header.
-
-It's also needed to generalize the cal_cycle function as Airoha needs
-only part of its logic (the wait logic) to complete a calibration cycle.
+Move defines to header, refactor cal_cycle for Airoha PHY support.
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
@@ -18,8 +14,8 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  create mode 100644 drivers/net/phy/mediatek/mtk-ge-soc.h
 
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-03-25 23:10:46.000000000 +1300
-+++ b/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-04-03 10:40:37.147231414 +1300
-@@ -4,418 +4,88 @@
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-04-03 11:06:04.804754658 +1300
+@@ -4,418 +4,89 @@
  #include <linux/mfd/syscon.h>
  #include <linux/module.h>
  #include <linux/nvmem-consumer.h>
@@ -405,6 +401,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 - */
 -static int cal_cycle(struct phy_device *phydev, int devad,
 -		     u32 regnum, u16 mask, u16 cal_val)
++/* Wait portion of calibration cycle - exported for Airoha PHY */
 +int mtk_cal_cycle_wait(struct phy_device *phydev)
  {
  	int reg_val;
