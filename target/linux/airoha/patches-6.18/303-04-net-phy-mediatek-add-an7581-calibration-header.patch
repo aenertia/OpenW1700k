@@ -7,6 +7,9 @@ calibration support.
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
+ drivers/net/phy/mediatek/mtk-ge-soc.h | 55 ++++++++++++++++++++++++++
+ 1 file changed, 55 insertions(+)
+
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.h
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
 @@ -13,6 +13,7 @@
