@@ -20,19 +20,20 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  2 files changed, 372 insertions(+), 350 deletions(-)
  create mode 100644 drivers/net/phy/mediatek/mtk-ge-soc.h
 
---- a/drivers/net/phy/mediatek/mtk-ge-soc.c
-+++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
-@@ -9,321 +9,10 @@
- #include <linux/regmap.h>
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-03-25 23:10:46.000000000 +1300
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-04-02 23:20:57.169894123 +1300
+@@ -11,323 +11,8 @@
  
+ #include "../phylib.h"
  #include "mtk.h"
 +#include "mtk-ge-soc.h"
  
- #define MTK_PHY_MAX_LEDS			2
- 
+-#define MTK_PHY_MAX_LEDS			2
+-
 -#define MTK_GPHY_ID_MT7981			0x03a29461
 -#define MTK_GPHY_ID_MT7988			0x03a29481
 -#define MTK_GPHY_ID_AN7581			0x03a294c1
+-#define MTK_GPHY_ID_AN7583			0xc0ff0420
 -
 -#define MTK_EXT_PAGE_ACCESS			0x1f
 -#define MTK_PHY_PAGE_STANDARD			0x0000
@@ -342,10 +343,11 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 -#define RG_GPIO_MISC_TPBANK0			0x6f0
 -#define   RG_GPIO_MISC_TPBANK0_BOOTMODE		GENMASK(11, 8)
 -
- /* These macro privides efuse parsing for internal phy. */
+-/* These macro privides efuse parsing for internal phy. */
  #define EFS_DA_TX_I2MPB_A(x)			(((x) >> 0) & GENMASK(5, 0))
  #define EFS_DA_TX_I2MPB_B(x)			(((x) >> 6) & GENMASK(5, 0))
-@@ -343,51 +32,16 @@
+ #define EFS_DA_TX_I2MPB_C(x)			(((x) >> 12) & GENMASK(5, 0))
+@@ -346,51 +31,11 @@
  #define EFS_RG_BG_RASEL(x)			(((x) >> 4) & GENMASK(2, 0))
  #define EFS_RG_REXT_TRIM(x)			(((x) >> 7) & GENMASK(5, 0))
  
@@ -375,11 +377,11 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 -	SW_M
 -};
 -
- struct mtk_socphy_shared {
- 	u32			boottrap;
- 	struct mtk_socphy_priv	priv[4];
- };
- 
+-struct mtk_socphy_shared {
+-	u32			boottrap;
+-	struct mtk_socphy_priv	priv[4];
+-};
+-
 -/* One calibration cycle consists of:
 - * 1.Set DA_CALIN_FLAG high to start calibration. Keep it high
 - *   until AD_CAL_COMP is ready to output calibration result.
@@ -398,15 +400,18 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
  			 MTK_PHY_DA_CALIN_FLAG);
  
-@@ -406,7 +60,25 @@ static int cal_cycle(struct phy_device *
+@@ -409,14 +54,30 @@
  	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
  	if (ret < 0)
  		return ret;
 -	ret = FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
-+
+-	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
+ 
+-	return ret;
 +	return FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
-+}
-+
+ }
+ 
+-static int rext_fill_result(struct phy_device *phydev, u16 *buf)
 +/* One calibration cycle consists of:
 + * 1.Set DA_CALIN_FLAG high to start calibration. Keep it high
 + *   until AD_CAL_COMP is ready to output calibration result.
@@ -415,34 +420,23 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 + */
 +static int cal_cycle(struct phy_device *phydev, int devad,
 +		     u32 regnum, u16 mask, u16 cal_val)
-+{
+ {
 +	int ret;
 +
 +	phy_modify_mmd(phydev, devad, regnum,
 +		       mask, cal_val);
 +
 +	ret = mtk_cal_cycle_wait(phydev);
- 	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
- 
- 	return ret;
-@@ -1071,6 +743,7 @@ static void mt798x_phy_eee(struct phy_de
- 				  0xff));
- }
- 
++	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
 +
- static int cal_sw(struct phy_device *phydev, enum CAL_ITEM cal_item,
- 		  u8 start_pair, u8 end_pair)
- {
-@@ -1270,6 +943,7 @@ static int mt798x_phy_led_hw_control_get
- 				       MTK_GPHY_LED_TX_BLINK_SET);
- };
- 
-+
- static int mt798x_phy_led_hw_control_set(struct phy_device *phydev, u8 index,
- 					 unsigned long rules)
- {
---- /dev/null
-+++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
++	return ret;
++}
++\n{
+ 	phy_modify_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
+ 		       MTK_PHY_RG_REXT_TRIM_MASK, buf[0] << 8);
+ 	phy_modify_mmd(phydev, MDIO_MMD_VEND2, MTK_PHY_RG_BG_RASEL,
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.h	1970-01-01 12:00:00.000000000 +1200
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.h	2026-04-02 23:20:59.180264233 +1300
 @@ -0,0 +1,351 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +
