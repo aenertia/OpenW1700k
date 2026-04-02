@@ -301,7 +301,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +}
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.h
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
-@@ -395,5 +395,6 @@ int airoha_phy_tx_amp_compensation(struc
+@@ -395,3 +395,4 @@ int airoha_phy_tx_amp_compensation(struc
  int an7581_phy_config_init(struct phy_device *phydev);
 +int an7583_phy_config_init(struct phy_device *phydev);
  

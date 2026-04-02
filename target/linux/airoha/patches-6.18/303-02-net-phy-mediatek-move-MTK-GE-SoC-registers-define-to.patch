@@ -400,7 +400,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
  			 MTK_PHY_DA_CALIN_FLAG);
  
-@@ -409,14 +54,30 @@
+@@ -409,16 +54,32 @@
  	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
  	if (ret < 0)
  		return ret;

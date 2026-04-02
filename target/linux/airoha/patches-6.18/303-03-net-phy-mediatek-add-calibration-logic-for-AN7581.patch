@@ -42,7 +42,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  obj-$(CONFIG_MTK_NET_PHYLIB)		+= mtk-phy-lib.o
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/airoha-phy-lib.c
-@@ -0,0 +1,1115 @@
+@@ -0,0 +1,1116 @@
 +// SPDX-License-Identifier: GPL-2.0
 +#include <linux/bitfield.h>
 +#include <linux/phy.h>
@@ -1161,7 +1161,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +}
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/an7581.c
-@@ -0,0 +1,341 @@
+@@ -0,0 +1,342 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
 +#include <linux/phy.h>
