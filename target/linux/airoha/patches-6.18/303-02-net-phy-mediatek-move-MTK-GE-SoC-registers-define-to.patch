@@ -431,7 +431,9 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +
 +	return ret;
 +}
-+\n{
++
+ static int rext_fill_result(struct phy_device *phydev, u16 *buf)
+ {
  	phy_modify_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
  		       MTK_PHY_RG_REXT_TRIM_MASK, buf[0] << 8);
  	phy_modify_mmd(phydev, MDIO_MMD_VEND2, MTK_PHY_RG_BG_RASEL,
