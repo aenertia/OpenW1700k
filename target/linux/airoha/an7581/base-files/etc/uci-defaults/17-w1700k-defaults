@@ -1,0 +1,94 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright: Joel Wiramu Pauling <aenertia@aenertia.net>
+#
+# W1700K first-boot defaults:
+#  - Set root password with SHA-512 hash (OpenSSH musl compat)
+#  - Configure OpenSSH (restricted KEX for PQ client compat)
+#  - Configure dnsmasq on port 54 (AGH takes port 53)
+#  - Fix nginx TLS (reject ML-KEM via ssl_conf_command, session tickets off)
+#  - Set ZRAM compression to lz4
+#  - Enable KSM for container memory deduplication
+
+# --- Root password: SHA-512 hash for OpenSSH musl compatibility ---
+# BusyBox passwd/chpasswd uses bcrypt ($2a$) which musl's crypt()
+# doesn't support for OpenSSH authentication. Use openssl passwd -6
+# to generate a SHA-512 ($6$) hash that works with both OpenSSH and login.
+if [ ! -f /etc/ssh/.password_set ]; then
+	HASH=$(openssl passwd -6 'CHANGEME')
+	sed -i "s|^root:[^:]*|root:${HASH}|" /etc/shadow
+	touch /etc/ssh/.password_set
+fi
+
+# --- dnsmasq: move to port 54 (AdGuard Home takes port 53) ---
+# AGH(:53) handles DNS filtering + DoH upstreams.
+# dnsmasq(:54) handles .lan resolution from DHCP leases + /etc/hosts.
+# AGH forwards [/lan/] queries to 127.0.0.1:54.
+uci set dhcp.@dnsmasq[0].port='54'
+uci set dhcp.@dnsmasq[0].noresolv='1'
+uci set dhcp.@dnsmasq[0].localservice='0'
+uci commit dhcp
+
+# --- OpenSSH: permit root login + restrict KEX algorithms ---
+# OpenSSH 10.x clients send 10+ KEX algorithms including PQ variants
+# (mlkem768, sntrup761). The combined KEXINIT proposal exceeds the
+# server's PROPOSAL_MAX (8192 bytes), causing "string is too long".
+# Restricting server-side to 3 algorithms keeps the combined proposal
+# well under the limit while maintaining strong security.
+if [ -f /etc/ssh/sshd_config ]; then
+	sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+	sed -i 's/^#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+	grep -q '^KexAlgorithms' /etc/ssh/sshd_config || \
+		echo 'KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512' >> /etc/ssh/sshd_config
+fi
+
+# --- nginx: reject ML-KEM + harden TLS ---
+# OpenSSL 3.5.x clients send ML-KEM768 hybrid key shares in TLS 1.3
+# ClientHello (1550 bytes). OpenWrt's musl/aarch64 OpenSSL build may
+# not have the ML-KEM provider, causing 'illegal_parameter' alert.
+# ssl_conf_command Groups explicitly rejects ML-KEM key shares.
+# Fall back to ssl_ecdh_curve if ssl_conf_command is unsupported.
+if uci -q get nginx._lan >/dev/null 2>&1; then
+	uci add_list nginx._lan.ssl_conf_command='Groups X25519:secp384r1:secp256r1' 2>/dev/null || \
+		uci set nginx._lan.ssl_ecdh_curve='X25519:secp384r1:secp256r1'
+	uci set nginx._lan.ssl_session_tickets='off'
+	uci commit nginx
+fi
+
+# --- nginx: change HTTP->HTTPS redirect from 302 to 301 ---
+if uci -q get nginx._redirect2ssl >/dev/null 2>&1; then
+	uci set nginx._redirect2ssl.return='301 https://$host$request_uri'
+	uci commit nginx
+fi
+
+# --- ZRAM: set compression algorithm to lz4 ---
+# lz4 decompresses 2.8x faster than zstd on A53 (no crypto extensions).
+# Swap page faults are latency-sensitive; lz4's sub-microsecond decompress
+# is more valuable than zstd's better compression ratio for a 2GB system.
+if uci -q get system.zram >/dev/null 2>&1; then
+	uci set system.zram.comp_algorithm='lz4'
+	uci commit system
+fi
+
+# --- KSM: enable kernel same-page merging ---
+if [ -f /sys/kernel/mm/ksm/run ]; then
+	echo 1   > /sys/kernel/mm/ksm/run
+	echo 200 > /sys/kernel/mm/ksm/pages_to_scan
+	echo 200 > /sys/kernel/mm/ksm/sleep_millisecs
+fi
+
+# Persist KSM enablement via rc.local (sysfs is not persistent)
+if ! grep -q 'ksm/run' /etc/rc.local 2>/dev/null; then
+	sed -i '/^exit 0/d' /etc/rc.local 2>/dev/null
+	cat >> /etc/rc.local <<'KSMEOF'
+# KSM for container memory deduplication
+[ -f /sys/kernel/mm/ksm/run ] && {
+	echo 1   > /sys/kernel/mm/ksm/run
+	echo 200 > /sys/kernel/mm/ksm/pages_to_scan
+	echo 200 > /sys/kernel/mm/ksm/sleep_millisecs
+}
+exit 0
+KSMEOF
+fi
+
+exit 0

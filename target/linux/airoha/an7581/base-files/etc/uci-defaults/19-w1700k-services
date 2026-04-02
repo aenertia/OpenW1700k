@@ -1,0 +1,61 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright: Joel Wiramu Pauling <aenertia@aenertia.net>
+#
+# W1700K service hardening — disable non-essential services by default
+# Phase 6: Reduce memory/CPU footprint and attack surface
+#
+# All disabled services remain installed and can be re-enabled:
+#   /etc/init.d/<service> enable && /etc/init.d/<service> start
+
+# --- Disable 19 non-essential services ---
+# Dynamic routing — enable when needed for BGP/OSPF
+# GPS — no GPS hardware connected by default
+# RADIUS — not needed for home/SOHO
+# Serial/socket relays — niche use cases
+# SOCKS5 proxies — redundant, enable individually if needed
+# HTTP proxies — redundant with AGH DNS filtering
+# MQTT — IoT use, enable when needed
+# USB/IP — no USB devices to share by default
+# Hardware monitoring — no supported sensors on AN7581
+# Ad-blocking — replaced by AdGuard Home DNS filtering
+# Encrypted DNS — replaced by AGH's built-in DoH upstreams
+
+for svc in \
+	frr \
+	gpsd \
+	radius \
+	ser2net \
+	socat \
+	microsocks \
+	hev-socks5-server \
+	hev-socks5-tproxy \
+	tinyproxy \
+	mosquitto \
+	usbipd \
+	lm-sensors \
+	adblock-fast \
+	banip \
+	squid \
+	privoxy \
+	dnscrypt-proxy \
+	https-dns-proxy \
+	redsocks \
+; do
+	if [ -x "/etc/init.d/$svc" ]; then
+		/etc/init.d/"$svc" disable 2>/dev/null
+		logger -t w1700k-defaults "disabled service: $svc"
+	fi
+done
+
+# --- Enable services that should be on by default ---
+# librespeed-go: speed test server on :8989 for WiFi testing
+if [ -x /etc/init.d/librespeed-go ]; then
+	uci -q get librespeed-go.config >/dev/null 2>&1 && {
+		uci set librespeed-go.config.enabled='1'
+		uci commit librespeed-go
+	}
+	/etc/init.d/librespeed-go enable 2>/dev/null
+fi
+
+exit 0

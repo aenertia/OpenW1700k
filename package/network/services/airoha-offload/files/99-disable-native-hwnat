@@ -1,0 +1,24 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright: Joel Wirāmu Pauling <aenertia@aenertia.net>
+#
+# Artifact Name: 99-disable-native-hwnat
+# Purpose: UCI defaults script to run on first boot.  Configures the
+#          coexistence offload model: both software flow offloading and
+#          hardware flow offloading are ENABLED.  The kernel flowtable
+#          (nft_flow_offload) programs the NPU PPE/FOE table via the
+#          standard ndo_setup_tc path.  The eBPF Soft Hook observes
+#          and classifies but does not replace the kernel offload.
+#
+# NOTE: The filename is kept as "99-disable-native-hwnat" for upgrade
+#       compatibility with systems that already ran the previous version.
+#       Despite the name, this script now ENABLES hw offload.
+
+uci -q batch <<EOF
+set firewall.@defaults[0].flow_offloading='1'
+set firewall.@defaults[0].flow_offloading_hw='1'
+commit firewall
+EOF
+
+/etc/init.d/firewall restart
+exit 0
