@@ -8,21 +8,10 @@ Move defines to header, refactor cal_cycle for Airoha PHY support.
 
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
- drivers/net/phy/mediatek/mtk-ge-soc.c | 371 ++------------------------
- drivers/net/phy/mediatek/mtk-ge-soc.h | 387 +++++++++++++++++++++++++++
- 2 files changed, 408 insertions(+), 350 deletions(-)
- create mode 100644 drivers/net/phy/mediatek/mtk-ge-soc.h
 
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.c
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
-@@ -4,413 +4,77 @@
- #include <linux/mfd/syscon.h>
- #include <linux/module.h>
- #include <linux/nvmem-consumer.h>
- #include <linux/pinctrl/consumer.h>
- #include <linux/phy.h>
- #include <linux/regmap.h>
- #include <linux/of.h>
+@@ -11,323 +11,8 @@
  
  #include "../phylib.h"
  #include "mtk.h"
@@ -347,18 +336,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  #define EFS_DA_TX_I2MPB_A(x)			(((x) >> 0) & GENMASK(5, 0))
  #define EFS_DA_TX_I2MPB_B(x)			(((x) >> 6) & GENMASK(5, 0))
  #define EFS_DA_TX_I2MPB_C(x)			(((x) >> 12) & GENMASK(5, 0))
- #define EFS_DA_TX_I2MPB_D(x)			(((x) >> 18) & GENMASK(5, 0))
- #define EFS_DA_TX_AMP_OFFSET_A(x)		(((x) >> 24) & GENMASK(5, 0))
- 
- #define EFS_DA_TX_AMP_OFFSET_B(x)		(((x) >> 0) & GENMASK(5, 0))
- #define EFS_DA_TX_AMP_OFFSET_C(x)		(((x) >> 6) & GENMASK(5, 0))
- #define EFS_DA_TX_AMP_OFFSET_D(x)		(((x) >> 12) & GENMASK(5, 0))
- #define EFS_DA_TX_R50_A(x)			(((x) >> 18) & GENMASK(5, 0))
- #define EFS_DA_TX_R50_B(x)			(((x) >> 24) & GENMASK(5, 0))
- 
- #define EFS_DA_TX_R50_C(x)			(((x) >> 0) & GENMASK(5, 0))
- #define EFS_DA_TX_R50_D(x)			(((x) >> 6) & GENMASK(5, 0))
- 
+@@ -346,51 +31,12 @@
  #define EFS_RG_BG_RASEL(x)			(((x) >> 4) & GENMASK(2, 0))
  #define EFS_RG_REXT_TRIM(x)			(((x) >> 7) & GENMASK(5, 0))
  
@@ -412,21 +390,13 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
  			 MTK_PHY_DA_CALIN_FLAG);
  
- 	ret = phy_read_mmd_poll_timeout(phydev, MDIO_MMD_VEND1,
- 					MTK_PHY_RG_AD_CAL_CLK, reg_val,
- 					reg_val & MTK_PHY_DA_CAL_CLK, 500,
- 					ANALOG_INTERNAL_OPERATION_MAX_US,
- 					false);
- 	if (ret) {
- 		phydev_err(phydev, "Calibration cycle timeout\n");
- 		return ret;
- 	}
+@@ -406,6 +52,31 @@
  
  	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
  			   MTK_PHY_DA_CALIN_FLAG);
- 	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
- 	if (ret < 0)
- 		return ret;
++	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
++	if (ret < 0)
++		return ret;
 +
 +	return FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
 +}
@@ -445,11 +415,13 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +
 +	return ret;
 +}
- 
- static int rext_fill_result(struct phy_device *phydev, u16 *buf)
- {
- 	phy_modify_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
- 		       MTK_PHY_RG_REXT_TRIM_MASK, buf[0] << 8);
++
++
++	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
++			   MTK_PHY_DA_CALIN_FLAG);
+ 	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
+ 	if (ret < 0)
+ 		return ret;
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
 @@ -0,0 +1,387 @@
