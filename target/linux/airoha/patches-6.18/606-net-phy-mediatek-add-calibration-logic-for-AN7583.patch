@@ -25,11 +25,11 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 
 --- a/drivers/net/phy/mediatek/Makefile
 +++ b/drivers/net/phy/mediatek/Makefile
-@@ -5,4 +5,4 @@ obj-$(CONFIG_MEDIATEK_GE_SOC_PHY)	+= mtk
- mtk-ge-soc-objs				+= mtk-ge-soc.o
--mtk-ge-soc-objs				+= airoha-phy-lib.o an7581.o
-+mtk-ge-soc-objs				+= airoha-phy-lib.o an7581.o an7583.o
- obj-$(CONFIG_MTK_NET_PHYLIB)		+= mtk-phy-lib.o
+@@ -5,3 +5,3 @@
+ mtk-ge-soc-objs                         += mtk-ge-soc.o
+-mtk-ge-soc-objs                         += airoha-phy-lib.o an7581.o
++mtk-ge-soc-objs                         += airoha-phy-lib.o an7581.o an7583.o
+ obj-$(CONFIG_MTK_NET_PHYLIB)            += mtk-phy-lib.o
 --- a/drivers/net/phy/mediatek/airoha-phy-lib.c
 +++ b/drivers/net/phy/mediatek/airoha-phy-lib.c
 @@ -612,8 +612,9 @@ static int airoha_rx_offset_cal_sw(struc
@@ -302,8 +302,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +}
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.h
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
-@@ -405,5 +405,6 @@ int airoha_phy_tx_amp_compensation(struc
- 
+@@ -395,5 +395,6 @@ int airoha_phy_tx_amp_compensation(struc
  int an7581_phy_config_init(struct phy_device *phydev);
 +int an7583_phy_config_init(struct phy_device *phydev);
  

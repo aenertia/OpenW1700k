@@ -785,7 +785,57 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +	SW_M
 +};
 +
++#define MTK_PHY_RG_ANA_CAL_RG6			0xe1
++
++#define MTK_PHY_RG_CR_TX_R50_OFFSET_A_B	0x174
++#define   MTK_PHY_CR_TX_R50_OFFSET_A_MASK	GENMASK(13, 8)
++#define   MTK_PHY_CR_TX_R50_OFFSET_B_MASK	GENMASK(6, 0)
++
++#define MTK_PHY_RG_CR_TX_R50_OFFSET_C_D	0x175
++#define   MTK_PHY_CR_TX_R50_OFFSET_C_MASK	GENMASK(13, 8)
++#define   MTK_PHY_CR_TX_R50_OFFSET_D_MASK	GENMASK(6, 0)
++
++#define   MTK_PHY_RG_REXT_CALEN		BIT(4)
++#define   MTK_PHY_RG_REXT_ZCAL_CTRL_MASK	GENMASK(5, 0)
++
++enum airoha_mdi_resister_type {
++	MDI_0R,
++	MDI_5R,
++	MDI_TYPE_MAX,
++};
++
++enum airoha_transformer_type {
++	TXMR,
++	DISCRETE,
++	TRANSFORMER_TYPE_MAX,
++};
++
++enum airoha_calib_const_type {
++	TX_AMP_TEST_A, TX_AMP_TEST_B, TX_AMP_TEST_C, TX_AMP_TEST_D,
++	TX_AMP_1G_A, TX_AMP_1G_B, TX_AMP_1G_C, TX_AMP_1G_D,
++	TX_AMP_100M_A, TX_AMP_100M_B,
++	TX_AMP_10M_A, TX_AMP_10M_B,
++	R50_A, R50_B, R50_C, R50_D,
++	CALIB_CONST_TYPE_MAX,
++};
++
++struct airoha_socphy_shared {
++	struct phy_device *phydev_p0;
++	enum airoha_transformer_type transformer_type[4];
++	enum airoha_mdi_resister_type mdi_resister_type;
++	bool rext_sw_calib_done;
++	struct mtk_socphy_priv priv[4];
++	int (*tx_amp_compensation_tbl)[TRANSFORMER_TYPE_MAX][MDI_TYPE_MAX][CALIB_CONST_TYPE_MAX][4];
++	u8 *r50_cal_tbl;
++};
++
 +/* MTK GE SoC common functions */
 +int mtk_cal_cycle_wait(struct phy_device *phydev);
++
++/* Airoha PHY functions */
++int airoha_phy_calib(struct phy_device *phydev);
++int airoha_phy_auto_select_transformer(struct phy_device *phydev);
++int airoha_phy_tx_amp_compensation(struct phy_device *phydev);
++int an7581_phy_config_init(struct phy_device *phydev);
 +
 +#endif /* _MTK_GE_SOC_H_ */
