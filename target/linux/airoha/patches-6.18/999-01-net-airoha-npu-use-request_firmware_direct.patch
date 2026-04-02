@@ -17,21 +17,12 @@ Link: https://github.com/openwrt/openwrt/pull/22697
 Link: https://github.com/openwrt/openwrt/issues/22709
 Signed-off-by: hzyitc <hzyitc@outlook.com>
 ---
- drivers/net/ethernet/airoha/airoha_npu.c | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
+ drivers/net/ethernet/airoha/airoha_npu.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
 --- a/drivers/net/ethernet/airoha/airoha_npu.c
 +++ b/drivers/net/ethernet/airoha/airoha_npu.c
-@@ -223,7 +223,7 @@ static int airoha_npu_run_firmware(struc
- 	if (fw_name)
- 		name = fw_name;
- 
--	ret = request_firmware(&fw, name, dev);
-+	ret = request_firmware_direct(&fw, name, dev);
- 	if (ret)
- 		return ret;
- 
-@@ -248,7 +248,7 @@ static int airoha_npu_run_firmware(struc
+@@ -203,7 +203,7 @@ static int airoha_npu_run_firmware(struc
  	if (fw_name)
  		name = fw_name;
  
