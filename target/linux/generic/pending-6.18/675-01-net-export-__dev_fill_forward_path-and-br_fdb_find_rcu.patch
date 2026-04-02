@@ -19,15 +19,15 @@ Signed-off-by: Ryan Chen <rchen14b@gmail.com>
 
 --- a/include/linux/netdevice.h
 +++ b/include/linux/netdevice.h
-@@ -3079,6 +3079,8 @@ int dev_get_iflink(const struct net_devi
+@@ -3343,6 +3343,8 @@ int dev_get_iflink(const struct net_devi
  int dev_fill_metadata_dst(struct net_device *dev, struct sk_buff *skb);
  int dev_fill_forward_path(const struct net_device *dev, const u8 *daddr,
  			  struct net_device_path_stack *stack);
 +int __dev_fill_forward_path(struct net_device_path_ctx *ctx, const u8 *daddr,
 +			    struct net_device_path_stack *stack);
- struct net_device *__dev_get_by_flags(struct net *net, unsigned short flags,
- 				      unsigned short mask);
  struct net_device *dev_get_by_name(struct net *net, const char *name);
+ struct net_device *dev_get_by_name_rcu(struct net *net, const char *name);
+ struct net_device *__dev_get_by_name(struct net *net, const char *name);
 --- a/net/bridge/br_fdb.c
 +++ b/net/bridge/br_fdb.c
 @@ -269,6 +269,7 @@ struct net_bridge_fdb_entry *br_fdb_find

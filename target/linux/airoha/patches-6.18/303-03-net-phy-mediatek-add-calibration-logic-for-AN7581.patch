@@ -33,12 +33,13 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 
 --- a/drivers/net/phy/mediatek/Makefile
 +++ b/drivers/net/phy/mediatek/Makefile
-@@ -2,3 +2,5 @@
- obj-$(CONFIG_MTK_NET_PHYLIB)		+= mtk-phy-lib.o
+@@ -2,4 +2,6 @@
+ obj-$(CONFIG_MEDIATEK_2P5GE_PHY)	+= mtk-2p5ge.o
  obj-$(CONFIG_MEDIATEK_GE_PHY)		+= mtk-ge.o
  obj-$(CONFIG_MEDIATEK_GE_SOC_PHY)	+= mtk-ge-soc.o
 +mtk-ge-soc-objs				+= mtk-ge-soc.o
 +mtk-ge-soc-objs				+= airoha-phy-lib.o an7581.o
+ obj-$(CONFIG_MTK_NET_PHYLIB)		+= mtk-phy-lib.o
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/airoha-phy-lib.c
 @@ -0,0 +1,1115 @@
@@ -1503,7 +1504,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +}
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.c
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
-@@ -883,8 +883,10 @@ static int mt7981_phy_probe(struct phy_d
+@@ -1406,8 +1406,10 @@ static int mt7981_phy_probe(struct phy_d
  
  static int an7581_phy_probe(struct phy_device *phydev)
  {
@@ -1514,7 +1515,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  
  	/* Toggle pinctrl to enable PHY LED */
  	pinctrl = devm_pinctrl_get_select(&phydev->mdio.dev, "gbe-led");
-@@ -892,10 +894,21 @@ static int an7581_phy_probe(struct phy_d
+@@ -1415,10 +1417,21 @@ static int an7581_phy_probe(struct phy_d
  		dev_err(&phydev->mdio.bus->dev,
  			"Failed to setup PHY LED pinctrl\n");
  
@@ -1536,7 +1537,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  	phydev->priv = priv;
  
  	return 0;
-@@ -967,6 +980,7 @@ static struct phy_driver mtk_socphy_driv
+@@ -1494,6 +1507,7 @@ static struct phy_driver mtk_socphy_driv
  	{
  		PHY_ID_MATCH_EXACT(MTK_GPHY_ID_AN7581),
  		.name		= "Airoha AN7581 PHY",
@@ -1546,7 +1547,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  		.probe		= an7581_phy_probe,
  		.led_blink_set	= mt798x_phy_led_blink_set,
  		.led_brightness_set = mt798x_phy_led_brightness_set,
-@@ -979,6 +995,8 @@ static struct phy_driver mtk_socphy_driv
+@@ -1504,6 +1520,8 @@ static struct phy_driver mtk_socphy_driv
  		.led_hw_control_set = mt798x_phy_led_hw_control_set,
  		.led_hw_control_get = mt798x_phy_led_hw_control_get,
  		.led_polarity_set = an7581_phy_led_polarity_set,
@@ -1557,7 +1558,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.h
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
-@@ -12,6 +12,7 @@
+@@ -13,6 +13,7 @@
  
  #define MTK_EXT_PAGE_ACCESS			0x1f
  #define MTK_PHY_PAGE_STANDARD			0x0000
@@ -1565,7 +1566,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  #define MTK_PHY_PAGE_EXTENDED_3			0x0003
  
  #define MTK_PHY_LPI_REG_14			0x14
-@@ -177,6 +178,7 @@
+@@ -177,6 +177,7 @@
  #define MTK_PHY_RG_ANA_CAL_RG0			0xdb
  #define   MTK_PHY_RG_CAL_CKINV			BIT(12)
  #define   MTK_PHY_RG_ANA_CALEN			BIT(8)
@@ -1573,7 +1574,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  #define   MTK_PHY_RG_ZCALEN_A			BIT(0)
  
  #define MTK_PHY_RG_ANA_CAL_RG1			0xdc
-@@ -187,6 +189,9 @@
+@@ -189,6 +189,9 @@
  
  #define MTK_PHY_RG_ANA_CAL_RG5			0xe0
  #define   MTK_PHY_RG_REXT_TRIM_MASK		GENMASK(13, 8)
@@ -1583,7 +1584,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  
  #define MTK_PHY_RG_TX_FILTER			0xfe
  
-@@ -208,6 +213,14 @@
+@@ -209,6 +213,14 @@
  #define   MTK_PHY_CR_TX_AMP_OFFSET_C_MASK	GENMASK(13, 8)
  #define   MTK_PHY_CR_TX_AMP_OFFSET_D_MASK	GENMASK(6, 0)
  
@@ -1598,7 +1599,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  #define MTK_PHY_RG_AD_CAL_COMP			0x17a
  #define   MTK_PHY_AD_CAL_COMP_OUT_MASK		GENMASK(8, 8)
  
-@@ -345,7 +358,59 @@ enum CAL_MODE {
+@@ -343,7 +358,59 @@ enum CAL_MODE {
  	SW_M
  };
  
