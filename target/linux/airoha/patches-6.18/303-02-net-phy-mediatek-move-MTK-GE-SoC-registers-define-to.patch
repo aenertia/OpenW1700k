@@ -16,12 +16,12 @@ source code.
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
  drivers/net/phy/mediatek/mtk-ge-soc.c | 371 ++------------------------
- drivers/net/phy/mediatek/mtk-ge-soc.h | 351 ++++++++++++++++++++++++
- 2 files changed, 372 insertions(+), 350 deletions(-)
+ drivers/net/phy/mediatek/mtk-ge-soc.h | 400 ++++++++++++++++++++++++
+ 2 files changed, 421 insertions(+), 350 deletions(-)
  create mode 100644 drivers/net/phy/mediatek/mtk-ge-soc.h
 
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-03-25 23:10:46.000000000 +1300
-+++ b/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-04-02 23:20:57.169894123 +1300
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-04-03 10:29:31.276180536 +1300
 @@ -11,323 +11,8 @@
  
  #include "../phylib.h"
@@ -400,18 +400,25 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
  			 MTK_PHY_DA_CALIN_FLAG);
  
-@@ -409,16 +54,32 @@
- 	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
- 	if (ret < 0)
+@@ -400,12 +45,43 @@
+ 					ANALOG_INTERNAL_OPERATION_MAX_US,
+ 					false);
+ 	if (ret) {
+-		phydev_err(phydev, "Calibration cycle timeout\n");
++		phydev_err(phydev, "Calibration cycle timeout
++");
  		return ret;
--	ret = FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
--	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
+ 	}
  
--	return ret;
+ 	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
+ 			   MTK_PHY_DA_CALIN_FLAG);
++	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
++	if (ret < 0)
++		return ret;
++
 +	return FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
- }
- 
--static int rext_fill_result(struct phy_device *phydev, u16 *buf)
++}
++
 +/* One calibration cycle consists of:
 + * 1.Set DA_CALIN_FLAG high to start calibration. Keep it high
 + *   until AD_CAL_COMP is ready to output calibration result.
@@ -420,26 +427,27 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 + */
 +static int cal_cycle(struct phy_device *phydev, int devad,
 +		     u32 regnum, u16 mask, u16 cal_val)
- {
++{
 +	int ret;
 +
 +	phy_modify_mmd(phydev, devad, regnum,
 +		       mask, cal_val);
 +
 +	ret = mtk_cal_cycle_wait(phydev);
-+	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
++	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d
++", cal_val, ret);
 +
 +	return ret;
 +}
 +
- static int rext_fill_result(struct phy_device *phydev, u16 *buf)
- {
- 	phy_modify_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
- 		       MTK_PHY_RG_REXT_TRIM_MASK, buf[0] << 8);
- 	phy_modify_mmd(phydev, MDIO_MMD_VEND2, MTK_PHY_RG_BG_RASEL,
++	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
++			   MTK_PHY_DA_CALIN_FLAG);
+ 	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
+ 	if (ret < 0)
+ 		return ret;
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.h	1970-01-01 12:00:00.000000000 +1200
-+++ b/drivers/net/phy/mediatek/mtk-ge-soc.h	2026-04-02 23:20:59.180264233 +1300
-@@ -0,0 +1,401 @@
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.h	2026-04-03 10:30:13.441001063 +1300
+@@ -0,0 +1,393 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +
 +#ifndef _MTK_GE_SOC_H_
@@ -787,6 +795,10 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +	SW_M
 +};
 +
++/* MTK GE SoC common functions */
++int mtk_cal_cycle_wait(struct phy_device *phydev);
++
++
 +#define MTK_PHY_RG_ANA_CAL_RG6			0xe1
 +
 +#define MTK_PHY_RG_CR_TX_R50_OFFSET_A_B	0x174
@@ -800,17 +812,8 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +#define   MTK_PHY_RG_REXT_CALEN		BIT(4)
 +#define   MTK_PHY_RG_REXT_ZCAL_CTRL_MASK	GENMASK(5, 0)
 +
-+enum airoha_mdi_resister_type {
-+	MDI_0R,
-+	MDI_5R,
-+	MDI_TYPE_MAX,
-+};
-+
-+enum airoha_transformer_type {
-+	TXMR,
-+	DISCRETE,
-+	TRANSFORMER_TYPE_MAX,
-+};
++enum airoha_mdi_resister_type { MDI_0R, MDI_5R, MDI_TYPE_MAX };
++enum airoha_transformer_type { TXMR, DISCRETE, TRANSFORMER_TYPE_MAX };
 +
 +enum airoha_calib_const_type {
 +	TX_AMP_TEST_A, TX_AMP_TEST_B, TX_AMP_TEST_C, TX_AMP_TEST_D,
@@ -830,9 +833,6 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +	int (*tx_amp_compensation_tbl)[TRANSFORMER_TYPE_MAX][MDI_TYPE_MAX][CALIB_CONST_TYPE_MAX][4];
 +	u8 *r50_cal_tbl;
 +};
-+
-+/* MTK GE SoC common functions */
-+int mtk_cal_cycle_wait(struct phy_device *phydev);
 +
 +/* Airoha PHY functions */
 +int airoha_phy_calib(struct phy_device *phydev);
