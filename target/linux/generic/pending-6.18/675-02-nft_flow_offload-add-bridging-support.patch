@@ -258,7 +258,7 @@ Signed-off-by: Ryan Chen <rchen14b@gmail.com>
 +	case NFPROTO_IPV4:
 +		fl.u.ip4.daddr = ct->tuplehash[!dir].tuple.src.u3.ip;
 +		fl.u.ip4.flowi4_oif = ifindex;
-+		fl.u.ip4.flowi4_tos = RT_TOS(ip_hdr(pkt->skb)->tos);
++		fl.u.ip4.flowi4_dscp = inet_dsfield_to_dscp(ip_hdr(pkt->skb)->tos);
 +		fl.u.ip4.flowi4_mark = pkt->skb->mark;
 +		fl.u.ip4.flowi4_flags = FLOWI_FLAG_ANYSRC;
 +		break;
