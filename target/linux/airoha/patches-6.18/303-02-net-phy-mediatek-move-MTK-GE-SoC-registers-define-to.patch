@@ -437,7 +437,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  	phy_modify_mmd(phydev, MDIO_MMD_VEND2, MTK_PHY_RG_BG_RASEL,
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.h	1970-01-01 12:00:00.000000000 +1200
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h	2026-04-02 23:20:59.180264233 +1300
-@@ -0,0 +1,351 @@
+@@ -0,0 +1,401 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +
 +#ifndef _MTK_GE_SOC_H_
