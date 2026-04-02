@@ -15,7 +15,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-03-25 23:10:46.000000000 +1300
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-04-03 11:06:04.804754658 +1300
-@@ -4,418 +4,89 @@
+@@ -4,413 +4,77 @@
  #include <linux/mfd/syscon.h>
  #include <linux/module.h>
  #include <linux/nvmem-consumer.h>
@@ -445,18 +445,6 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +
 +	return ret;
 +}
-+
-+
-+	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
-+			   MTK_PHY_DA_CALIN_FLAG);
-+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
-+	if (ret < 0)
-+		return ret;
- 	ret = FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
- 	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
- 
- 	return ret;
- }
  
  static int rext_fill_result(struct phy_device *phydev, u16 *buf)
  {
