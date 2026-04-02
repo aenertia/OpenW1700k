@@ -24,7 +24,7 @@ define Package/airoha-offload
   SECTION:=net
   CATEGORY:=Network
   TITLE:=eBPF/XDP Soft Hook & Sync Daemon for Airoha AN7581
-  DEPENDS:=@TARGET_airoha +libbpf +libnetfilter-conntrack +libmnl +ip-full +libpthread $(BPF_DEPENDS)
+  DEPENDS:=@TARGET_airoha +libbpf +libnetfilter-conntrack +libmnl +ip-full +libpthread +bpftool-minimal $(BPF_DEPENDS)
 endef
 
 define Package/airoha-offload/description

@@ -112,9 +112,13 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	return port >= ARRAY_SIZE(eth->ports) ? -EINVAL : port;
  }
  
-+/* XDP TX using linked-list descriptor model (kernel 6.18+) */
++/* XDP TX using linked-list descriptor model (kernel 6.18+).
++ * Converts the XDP buffer to an xdp_frame to hold a page reference
++ * until TX completion, avoiding use-after-free with page pool recycling.
++ */
 +static int airoha_xdp_tx(struct airoha_qdma *qdma, struct xdp_buff *xdp)
 +{
++	struct xdp_frame *xdpf;
 +	struct airoha_queue *q = &qdma->q_tx[0];
 +	struct airoha_qdma_desc *desc;
 +	struct airoha_queue_entry *e;
@@ -122,10 +126,16 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	int index;
 +	u32 val;
 +
++	/* Convert to xdp_frame to hold page reference across async TX DMA */
++	xdpf = xdp_convert_buff_to_frame(xdp);
++	if (unlikely(!xdpf))
++		return -EOVERFLOW;
++
 +	spin_lock_bh(&q->lock);
 +
 +	if (q->queued >= q->ndesc - 1 || list_empty(&q->tx_list)) {
 +		spin_unlock_bh(&q->lock);
++		xdp_return_frame(xdpf);
 +		return -ENOSPC;
 +	}
 +
@@ -134,10 +144,11 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	index = e - q->entry;
 +	desc = &q->desc[index];
 +
-+	dma_addr = dma_map_single(qdma->eth->dev, xdp->data,
-+				  xdp->data_end - xdp->data, DMA_TO_DEVICE);
++	dma_addr = dma_map_single(qdma->eth->dev, xdpf->data,
++				  xdpf->len, DMA_TO_DEVICE);
 +	if (dma_mapping_error(qdma->eth->dev, dma_addr)) {
 +		spin_unlock_bh(&q->lock);
++		xdp_return_frame(xdpf);
 +		return -ENOMEM;
 +	}
 +
@@ -145,10 +156,15 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	list_del_init(&e->list);
 +
 +	e->dma_addr = dma_addr;
-+	e->dma_len = xdp->data_end - xdp->data;
-+	e->skb = NULL;
++	e->dma_len = xdpf->len;
++	/* Store xdp_frame pointer as skb — TX completion checks
++	 * AIROHA_TXQ_XDP_FRAME flag in dma_len upper bits to distinguish
++	 * XDP frames from SKBs for proper cleanup.
++	 */
++	e->skb = (struct sk_buff *)xdpf;
++	e->dma_len |= AIROHA_TXQ_XDP_FRAME;
 +
-+	val = FIELD_PREP(QDMA_DESC_LEN_MASK, e->dma_len);
++	val = FIELD_PREP(QDMA_DESC_LEN_MASK, xdpf->len);
 +	WRITE_ONCE(desc->ctrl, cpu_to_le32(val));
 +	WRITE_ONCE(desc->addr, cpu_to_le32(dma_addr));
 +	WRITE_ONCE(desc->data, 0);
@@ -285,7 +301,7 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +				struct xdp_buff xdp;
 +				u32 act;
 +
-+				xdp_init_buff(&xdp, q->buf_size - AIROHA_XDP_HEADROOM,
++				xdp_init_buff(&xdp, q->buf_size,
 +					      &q->xdp_rxq);
 +				xdp_prepare_buff(&xdp, e->buf, AIROHA_XDP_HEADROOM,
 +						 len, false);
@@ -295,9 +311,13 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +				case XDP_PASS:
 +					break;
 +				case XDP_TX:
-+					airoha_xdp_tx(qdma, &xdp);
-+					page_pool_recycle_direct(q->page_pool,
-+								 virt_to_page(e->buf));
++					/* airoha_xdp_tx converts to xdp_frame
++					 * which holds the page ref until TX
++					 * completion — do NOT recycle here.
++					 */
++					if (airoha_xdp_tx(qdma, &xdp))
++						page_pool_recycle_direct(q->page_pool,
++									 virt_to_page(e->buf));
 +					rcu_read_unlock();
 +					continue;
 +				case XDP_REDIRECT:
@@ -332,9 +352,16 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  			q->skb->ip_summed = CHECKSUM_UNNECESSARY;
  			skb_record_rx_queue(q->skb, qid);
 +
-+			/* Copy XDP metadata mark to skb->mark for nft/tc visibility */
++			/* Copy XDP metadata mark to skb->mark for nft/tc visibility.
++			 * The XDP program prepends an airoha_meta struct (64 bytes)
++			 * via bpf_xdp_adjust_meta(). The metadata sits between
++			 * skb->head + XDP_HEADROOM - sizeof(meta) and skb->data.
++			 * We look for the magic at a fixed offset matching the
++			 * struct layout: magic(4) + mark(4) at the start.
++			 */
 +			{
-+				unsigned char *meta_ptr = q->skb->data - 12;
++				/* airoha_meta is 64 bytes; magic at offset 0 */
++				unsigned char *meta_ptr = q->skb->data - 64;
 +				if (meta_ptr >= q->skb->head) {
 +					u32 magic = get_unaligned_le32(meta_ptr);
 +					if (magic == 0xA1B2C3D4) {
@@ -461,9 +488,14 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  
 +static void airoha_qdma_rx_queue_deinit(struct airoha_queue *q)
 +{
++	if (xdp_rxq_info_is_reg(&q->xdp_rxq))
++		xdp_rxq_info_unreg(&q->xdp_rxq);
++
 +	airoha_qdma_cleanup_rx_queue(q);
-+	if (q->page_pool)
++	if (q->page_pool) {
 +		page_pool_destroy(q->page_pool);
++		q->page_pool = NULL;
++	}
 +}
  
  static int airoha_qdma_init_rx(struct airoha_qdma *qdma)
@@ -519,13 +551,25 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +			if (!lro_queue)
 +				continue;
 +
++			if (xdp_rxq_info_is_reg(&rq->xdp_rxq))
++				xdp_rxq_info_unreg(&rq->xdp_rxq);
 +			airoha_qdma_cleanup_rx_queue(rq);
-+			if (rq->page_pool)
++			if (rq->page_pool) {
 +				page_pool_destroy(rq->page_pool);
++				rq->page_pool = NULL;
++			}
 +
 +			err = airoha_qdma_init_rx_pp(rq, lro_queue);
 +			if (err)
 +				return err;
++
++			if (xdp_rxq_info_reg(&rq->xdp_rxq, eth->napi_dev, j,
++					     rq->napi.napi_id))
++				return -ENOMEM;
++			if (xdp_rxq_info_reg_mem_model(&rq->xdp_rxq,
++						       MEM_TYPE_PAGE_POOL,
++						       rq->page_pool))
++				return -ENOMEM;
 +
 +			airoha_qdma_fill_rx_queue(rq);
 +		}
@@ -547,10 +591,13 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +				if (!airoha_qdma_is_lro_rx_queue(&q->q_rx[j], q))
 +					continue;
 +				cdm_id = i + 1;
++				/* nbuf = max aggregated segments that fit
++				 * in the LRO buffer. Each segment is ~1500B
++				 * (MTU), so nbuf = buf_size / ETH_DATA_LEN.
++				 */
 +				airoha_fe_lro_init_rx_queue(eth, cdm_id,
 +							    lro_idx, j,
-+							    q->q_rx[j].buf_size /
-+							    SKB_WITH_OVERHEAD(q->q_rx[j].buf_size),
++							    q->q_rx[j].buf_size / ETH_DATA_LEN,
 +							    q->q_rx[j].buf_size);
 +				lro_idx++;
 +			}
@@ -604,7 +651,10 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	}
 +}
 +
-+/* XDP xmit using linked-list descriptor model (kernel 6.18+) */
++/* XDP xmit using linked-list descriptor model (kernel 6.18+).
++ * Holds lock for entire batch to avoid CPU_IDX race and improve
++ * performance (single doorbell write for all frames).
++ */
 +static int airoha_dev_xdp_xmit(struct net_device *dev, int n,
 +				struct xdp_frame **frames, u32 flags)
 +{
@@ -612,6 +662,8 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	struct airoha_qdma *qdma = port->qdma;
 +	struct airoha_queue *q = &qdma->q_tx[0];
 +	int i, sent = 0;
++
++	spin_lock_bh(&q->lock);
 +
 +	for (i = 0; i < n; i++) {
 +		struct xdp_frame *xdpf = frames[i];
@@ -621,11 +673,8 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +		int index;
 +		u32 val;
 +
-+		spin_lock_bh(&q->lock);
-+		if (q->queued >= q->ndesc - 1 || list_empty(&q->tx_list)) {
-+			spin_unlock_bh(&q->lock);
++		if (q->queued >= q->ndesc - 1 || list_empty(&q->tx_list))
 +			break;
-+		}
 +
 +		/* Allocate from free descriptor list */
 +		e = list_first_entry(&q->tx_list, struct airoha_queue_entry,
@@ -636,15 +685,17 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +		dma_addr = dma_map_single(qdma->eth->dev, xdpf->data,
 +					  xdpf->len, DMA_TO_DEVICE);
 +		if (dma_mapping_error(qdma->eth->dev, dma_addr)) {
-+			spin_unlock_bh(&q->lock);
 +			xdp_return_frame_rx_napi(xdpf);
 +			continue;
 +		}
 +
 +		list_del_init(&e->list);
 +		e->dma_addr = dma_addr;
-+		e->dma_len = xdpf->len;
-+		e->skb = NULL;
++		e->dma_len = xdpf->len | AIROHA_TXQ_XDP_FRAME;
++		/* Store xdp_frame as skb pointer — TX completion uses
++		 * AIROHA_TXQ_XDP_FRAME flag to call xdp_return_frame().
++		 */
++		e->skb = (struct sk_buff *)xdpf;
 +
 +		val = FIELD_PREP(QDMA_DESC_LEN_MASK, xdpf->len);
 +		WRITE_ONCE(desc->ctrl, cpu_to_le32(val));
@@ -657,9 +708,9 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +
 +		q->queued++;
 +		sent++;
-+		spin_unlock_bh(&q->lock);
 +	}
 +
++	/* Single doorbell write for entire batch, inside lock */
 +	if (sent && !list_empty(&q->tx_list)) {
 +		struct airoha_queue_entry *next;
 +
@@ -670,6 +721,8 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +				FIELD_PREP(TX_RING_CPU_IDX_MASK,
 +					   next - q->entry));
 +	}
++
++	spin_unlock_bh(&q->lock);
 +
 +	return sent;
 +}
@@ -722,6 +775,12 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  #define PPE_DRAM_NUM_ENTRIES		(16 * 1024)
  #define PPE_ENTRY_SIZE			80
 +#define AIROHA_XDP_HEADROOM		XDP_PACKET_HEADROOM
++/* Flag stored in upper bits of dma_len to mark XDP frame entries.
++ * TX completion checks this to call xdp_return_frame() instead of
++ * dev_kfree_skb_any(). Actual length is masked with AIROHA_TXQ_LEN_MASK.
++ */
++#define AIROHA_TXQ_XDP_FRAME		BIT(15)
++#define AIROHA_TXQ_LEN_MASK		GENMASK(14, 0)
 +
 +#define AIROHA_LRO_PAGE_ORDER		2
 +#define AIROHA_MAX_NUM_LRO_QUEUES	8

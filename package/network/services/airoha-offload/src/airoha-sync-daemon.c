@@ -96,6 +96,8 @@ struct internal_flow {
 	struct flow_key key;
 	uint64_t last_hw_bytes;
 	uint64_t last_hw_pkts;
+	uint64_t ct_sync_bytes; /* cumulative bytes synced to conntrack */
+	uint64_t ct_sync_pkts;  /* cumulative pkts synced to conntrack */
 	time_t   last_seen;     /* last time seen in debugfs */
 	time_t   first_seen;
 	uint8_t  offload_cap;
@@ -257,8 +259,10 @@ static int flow_table_insert(const struct flow_key *key, uint8_t offload_cap)
 	for (int i = 0; i < MAX_INTERNAL_FLOWS; i++) {
 		if (!flow_table[i].active) {
 			memcpy(&flow_table[i].key, key, sizeof(*key));
-			flow_table[i].last_hw_bytes = 0;
-			flow_table[i].last_hw_pkts  = 0;
+		flow_table[i].last_hw_bytes = 0;
+		flow_table[i].last_hw_pkts  = 0;
+		flow_table[i].ct_sync_bytes = 0;
+		flow_table[i].ct_sync_pkts  = 0;
 			flow_table[i].first_seen    = time(NULL);
 			flow_table[i].last_seen     = time(NULL);
 			flow_table[i].offload_cap   = offload_cap;
@@ -308,8 +312,23 @@ static void sync_hardware_counters(const struct flow_key *key,
 	if (destroy) {
 		nfct_query(h, NFCT_Q_DESTROY, ct);
 	} else {
-		nfct_set_attr_u64(ct, ATTR_ORIG_COUNTER_BYTES, hw_bytes_delta);
-		nfct_set_attr_u64(ct, ATTR_ORIG_COUNTER_PACKETS, hw_pkts_delta);
+		/* Accumulate deltas into the flow's cumulative counters.
+		 * conntrack NFCT_Q_UPDATE sets absolute values, so we must
+		 * pass the running total, not just the latest delta.
+		 */
+		struct internal_flow *fl = flow_table_find(key);
+		uint64_t total_bytes = hw_bytes_delta;
+		uint64_t total_pkts  = hw_pkts_delta;
+
+		if (fl) {
+			fl->ct_sync_bytes += hw_bytes_delta;
+			fl->ct_sync_pkts  += hw_pkts_delta;
+			total_bytes = fl->ct_sync_bytes;
+			total_pkts  = fl->ct_sync_pkts;
+		}
+
+		nfct_set_attr_u64(ct, ATTR_ORIG_COUNTER_BYTES, total_bytes);
+		nfct_set_attr_u64(ct, ATTR_ORIG_COUNTER_PACKETS, total_pkts);
 		nfct_query(h, NFCT_Q_UPDATE, ct);
 	}
 
