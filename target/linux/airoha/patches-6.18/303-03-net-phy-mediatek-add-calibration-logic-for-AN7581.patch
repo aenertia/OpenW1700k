@@ -1537,8 +1537,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  	phydev->priv = priv;
  
  	return 0;
-@@ -1494,6 +1507,7 @@ static struct phy_driver mtk_socphy_driv
- 	{
+@@ -1522,12 +1535,15 @@ static struct phy_driver mtk_socphy_driv
  		PHY_ID_MATCH_EXACT(MTK_GPHY_ID_AN7581),
  		.name		= "Airoha AN7581 PHY",
 +		.config_init	= an7581_phy_config_init,
@@ -1547,15 +1546,14 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  		.probe		= an7581_phy_probe,
  		.led_blink_set	= mt798x_phy_led_blink_set,
  		.led_brightness_set = mt798x_phy_led_brightness_set,
-@@ -1504,6 +1520,8 @@ static struct phy_driver mtk_socphy_driv
+ 		.led_hw_is_supported = mt798x_phy_led_hw_is_supported,
  		.led_hw_control_set = mt798x_phy_led_hw_control_set,
  		.led_hw_control_get = mt798x_phy_led_hw_control_get,
  		.led_polarity_set = an7581_phy_led_polarity_set,
 +		.read_page	= mtk_phy_read_page,
 +		.write_page	= mtk_phy_write_page,
  	},
- };
- 
++
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.h
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
 @@ -13,6 +13,7 @@
