@@ -19,8 +19,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  drivers/net/phy/mediatek/an7583.c         | 254 ++++++++++++++++++++++
  drivers/net/phy/mediatek/mtk-ge-soc.c     |   8 +-
  drivers/net/phy/mediatek/mtk-ge-soc.h     |   1 +
- drivers/net/phy/mediatek/mtk.h            |   1 +
- 6 files changed, 263 insertions(+), 9 deletions(-)
+ 5 files changed, 262 insertions(+), 9 deletions(-)
  create mode 100644 drivers/net/phy/mediatek/an7583.c
 
 --- a/drivers/net/phy/mediatek/Makefile
@@ -307,13 +306,3 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +int an7583_phy_config_init(struct phy_device *phydev);
  
  #endif /* _MTK_GE_SOC_H_ */
---- a/drivers/net/phy/mediatek/mtk.h
-+++ b/drivers/net/phy/mediatek/mtk.h
-@@ -13,6 +13,7 @@
- 
- #define MTK_EXT_PAGE_ACCESS			0x1f
- #define MTK_PHY_PAGE_EXTENDED_1			0x0001
-+#define MTK_PHY_PAGE_EXTENDED_3			0x0003
- #define MTK_PHY_PAGE_STANDARD			0x0000
- #define MTK_PHY_PAGE_EXTENDED_52B5		0x52b5
- 
