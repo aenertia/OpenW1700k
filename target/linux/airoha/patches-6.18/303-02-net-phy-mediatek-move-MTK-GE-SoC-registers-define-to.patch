@@ -13,8 +13,8 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  2 files changed, 408 insertions(+), 350 deletions(-)
  create mode 100644 drivers/net/phy/mediatek/mtk-ge-soc.h
 
---- a/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-03-25 23:10:46.000000000 +1300
-+++ b/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-04-03 11:06:04.804754658 +1300
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
 @@ -4,413 +4,77 @@
  #include <linux/mfd/syscon.h>
  #include <linux/module.h>
@@ -450,8 +450,8 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  {
  	phy_modify_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_ANA_CAL_RG5,
  		       MTK_PHY_RG_REXT_TRIM_MASK, buf[0] << 8);
---- a/drivers/net/phy/mediatek/mtk-ge-soc.h	1970-01-01 12:00:00.000000000 +1200
-+++ b/drivers/net/phy/mediatek/mtk-ge-soc.h	2026-04-03 10:40:37.147362636 +1300
+--- /dev/null
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
 @@ -0,0 +1,387 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +
