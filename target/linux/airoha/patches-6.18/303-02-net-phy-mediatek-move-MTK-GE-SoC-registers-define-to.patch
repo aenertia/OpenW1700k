@@ -400,13 +400,12 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
  			 MTK_PHY_DA_CALIN_FLAG);
  
-@@ -400,12 +45,43 @@
+@@ -400,12 +45,41 @@
  					ANALOG_INTERNAL_OPERATION_MAX_US,
  					false);
  	if (ret) {
 -		phydev_err(phydev, "Calibration cycle timeout\n");
-+		phydev_err(phydev, "Calibration cycle timeout
-+");
++		phydev_err(phydev, "Calibration cycle timeout\n");
  		return ret;
  	}
  
@@ -434,8 +433,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +		       mask, cal_val);
 +
 +	ret = mtk_cal_cycle_wait(phydev);
-+	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d
-+", cal_val, ret);
++	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
 +
 +	return ret;
 +}
