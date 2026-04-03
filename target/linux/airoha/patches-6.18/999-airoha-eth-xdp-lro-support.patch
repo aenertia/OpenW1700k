@@ -30,10 +30,10 @@ LRO features (from Lorenzo Bianconi's patches):
 Signed-off-by: Joel Wiramu Pauling <aenertia@aenertia.net>
 Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 ---
---- a/drivers/net/ethernet/airoha/airoha_eth.c	2026-04-03 16:13:52.544276500 +1300
-+++ b/drivers/net/ethernet/airoha/airoha_eth.c	2026-04-03 16:13:52.549223854 +1300
-@@ -493,6 +493,39 @@
- 		airoha_fe_clear(eth, REG_CDM_LRO_RXQ(id, i), LRO_RXQ_MASK(i));
+--- a/drivers/net/ethernet/airoha/airoha_eth.c	2026-04-03 16:51:28.622132005 +1300
++++ b/drivers/net/ethernet/airoha/airoha_eth.c	2026-04-03 16:51:28.633200619 +1300
+@@ -439,6 +439,39 @@
+ 				 CDM_CRSN_QSEL_Q1));
  }
  
 +static void airoha_fe_lro_init_rx_queue(struct airoha_eth *eth, int id,
@@ -72,9 +72,9 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  static int airoha_fe_init(struct airoha_eth *eth)
  {
  	airoha_fe_maccr_init(eth);
-@@ -1003,6 +1036,9 @@
- 	if (xdp_flush)
- 		xdp_do_flush();
+@@ -947,6 +980,9 @@
+ 		airoha_qdma_irq_enable(&qdma->irq_banks[0], QDMA_INT_REG_IDX0,
+ 				       TX_DONE_INT_MASK(id));
  
 +	if (xdp_flush)
 +		xdp_do_flush();
@@ -82,25 +82,10 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	return done;
  }
  
-@@ -1049,14 +1085,6 @@
- 	};
+@@ -1038,6 +1074,16 @@
+ 	}
  
- 	q->buf_size = pp_params.max_len / (2 * (1 + lro_queue));
--	q->page_pool = page_pool_create(&pp_params);
--	if (IS_ERR(q->page_pool)) {
--		int err = PTR_ERR(q->page_pool);
--
--		q->page_pool = NULL;
--		return err;
--	}
--
  	return 0;
- }
- 
-@@ -1094,6 +1122,16 @@
- 	if (xdp_rxq_info_reg_mem_model(&q->xdp_rxq, MEM_TYPE_PAGE_POOL, q->page_pool))
- 		return -ENOMEM;
- 
 +	lro_queue = airoha_qdma_is_lro_rx_queue(q, qdma);
 +	err = airoha_qdma_init_rx_pp(q, lro_queue);
 +	if (err)
@@ -111,13 +96,13 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	if (xdp_rxq_info_reg_mem_model(&q->xdp_rxq, MEM_TYPE_PAGE_POOL, q->page_pool))
 +		return -ENOMEM;
 +
- 	airoha_qdma_wr(qdma, REG_RX_RING_BASE(qid), dma_addr);
- 	airoha_qdma_rmw(qdma, REG_RX_RING_SIZE(qid),
- 			RX_RING_SIZE_MASK,
-@@ -1124,6 +1162,17 @@
- 		q->page_pool = NULL;
- 	}
  }
+ 
+ static void airoha_qdma_cleanup_tx_queue(struct airoha_queue *q)
+@@ -1068,6 +1114,17 @@
+ 	dma_addr_t dma_addr;
+ 	const char *name;
+ 
 +static void airoha_qdma_rx_queue_deinit(struct airoha_queue *q)
 +{
 +	if (xdp_rxq_info_is_reg(&q->xdp_rxq))
@@ -129,13 +114,13 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +		q->page_pool = NULL;
 +	}
 +}
- 	struct airoha_qdma *qdma = q->qdma;
- 	struct airoha_eth *eth = qdma->eth;
- 	int qid = q - &qdma->q_rx[0];
-@@ -2282,6 +2331,99 @@
- }
+ 	name = devm_kasprintf(eth->dev, GFP_KERNEL, "qdma%d-buf", id);
+ 	if (!name)
+ 		return -ENOMEM;
+@@ -2226,6 +2283,99 @@
  
- static int airoha_dev_set_features(struct net_device *dev,
+ 	airoha_qdma_wr(qdma, REG_TRTCM_CFG_PARAM(addr), config);
+ 	if (read_poll_timeout(airoha_qdma_rr, val,
 +				   netdev_features_t features)
 +{
 +	netdev_features_t diff = dev->features ^ features;
@@ -229,24 +214,24 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +}
 +
 +static int airoha_dev_set_features(struct net_device *dev,
- 				   netdev_features_t features)
- {
- 	netdev_features_t diff = dev->features ^ features;
---- a/drivers/net/ethernet/airoha/airoha_eth.h	2026-04-03 16:13:52.545163793 +1300
-+++ b/drivers/net/ethernet/airoha/airoha_eth.h	2026-04-03 16:13:52.550005986 +1300
+ 			      val & RATE_LIMIT_PARAM_RW_DONE_MASK,
+ 			      USEC_PER_MSEC, 10 * USEC_PER_MSEC, true, qdma,
+ 			      REG_TRTCM_CFG_PARAM(addr)))
+--- a/drivers/net/ethernet/airoha/airoha_eth.h	2026-04-03 16:51:28.622961078 +1300
++++ b/drivers/net/ethernet/airoha/airoha_eth.h	2026-04-03 16:51:28.633535234 +1300
 @@ -15,6 +15,8 @@
  #include <linux/reset.h>
- #include <linux/bpf.h>
- #include <net/xdp.h>
-+#include <linux/bpf.h>
-+#include <net/xdp.h>
  #include <linux/soc/airoha/airoha_offload.h>
  #include <net/dsa.h>
++#include <linux/bpf.h>
++#include <net/xdp.h>
  
+ #define AIROHA_MAX_NUM_GDM_PORTS	4
+ #define AIROHA_MAX_NUM_QDMA		2
 @@ -51,6 +53,25 @@
- 
- #define PPE_SRAM_NUM_ENTRIES		(8 * 1024)
- #define PPE_STATS_NUM_ENTRIES		(4 * 1024)
+ #define PPE_NUM				2
+ #define PPE1_SRAM_NUM_ENTRIES		(8 * 1024)
+ #define PPE_SRAM_NUM_ENTRIES		(2 * PPE1_SRAM_NUM_ENTRIES)
 +#define AIROHA_XDP_HEADROOM		XDP_PACKET_HEADROOM
 +/* Flag stored in upper bits of dma_len to mark XDP frame entries.
 + * TX completion checks this to call xdp_return_frame() instead of
@@ -266,31 +251,31 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	 NETIF_F_TSO6 | NETIF_F_IPV6_CSUM |	\
 +	 NETIF_F_SG | NETIF_F_TSO | NETIF_F_HW_TC)
 +
- #define PPE_DRAM_NUM_ENTRIES		(16 * 1024)
- #define PPE_ENTRY_SIZE			80
- #define AIROHA_XDP_HEADROOM		XDP_PACKET_HEADROOM
-@@ -196,6 +217,7 @@
- 			struct sk_buff *skb;
- 		};
+ #ifdef CONFIG_NET_AIROHA_FLOW_STATS
+ #define PPE1_STATS_NUM_ENTRIES		(4 * 1024)
+ #else
+@@ -170,6 +191,7 @@
+ 		void *buf;
+ 		struct sk_buff *skb;
  	};
 +	struct xdp_rxq_info xdp_rxq;
  	dma_addr_t dma_addr;
  	u16 dma_len;
  };
-@@ -562,6 +584,8 @@
+@@ -536,6 +558,8 @@
  
- 	struct bpf_prog __rcu *xdp_prog;
- 
+ 	/* qos stats counters */
+ 	u64 cpu_tx_packets;
 +	struct bpf_prog __rcu *xdp_prog;
 +
- #if defined(CONFIG_PCS_AIROHA)
- 	struct phylink *phylink;
- 	struct phylink_config phylink_config;
---- a/drivers/net/ethernet/airoha/airoha_ppe.c	2026-04-03 16:13:52.546289470 +1300
-+++ b/drivers/net/ethernet/airoha/airoha_ppe.c	2026-04-03 16:13:52.550115878 +1300
-@@ -51,6 +51,39 @@
- 	*queue = q & 0x7;
- }
+ 	u64 fwd_tx_packets;
+ 
+ 	struct metadata_dst *dsa_meta[AIROHA_MAX_DSA_PORTS];
+--- a/drivers/net/ethernet/airoha/airoha_ppe.c	2026-04-03 16:51:28.623746979 +1300
++++ b/drivers/net/ethernet/airoha/airoha_ppe.c	2026-04-03 16:51:28.633655316 +1300
+@@ -18,6 +18,39 @@
+ static DEFINE_MUTEX(flow_offload_mutex);
+ static DEFINE_SPINLOCK(ppe_lock);
  
 +/*
 + * Map DSCP (0-63) to QDMA channel (0-3) and queue (0-7) for hardware
@@ -328,10 +313,10 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  static const struct rhashtable_params airoha_flow_table_params = {
  	.head_offset = offsetof(struct airoha_flow_table_entry, node),
  	.key_offset = offsetof(struct airoha_flow_table_entry, cookie),
-@@ -1228,6 +1261,34 @@
- 	}
+@@ -1195,6 +1228,34 @@
  
- 	/* Populate hardware QoS fields from flow DSCP */
+ 	idle = airoha_ppe_entry_idle_time(eth->ppe, e);
+ 	f->stats.lastused = jiffies - idle * HZ;
 +	if (offload_type != PPE_PKT_TYPE_BRIDGE &&
 +	    flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IP)) {
 +		struct flow_match_ip match_ip;
@@ -360,14 +345,14 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	}
 +
 +	/* Populate hardware QoS fields from flow DSCP */
- 	if (offload_type != PPE_PKT_TYPE_BRIDGE &&
- 	    flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IP)) {
- 		struct flow_match_ip match_ip;
---- a/drivers/net/ethernet/airoha/airoha_regs.h	2026-04-03 16:13:52.547106333 +1300
-+++ b/drivers/net/ethernet/airoha/airoha_regs.h	2026-04-03 16:14:49.126022590 +1300
-@@ -136,6 +136,20 @@
- #define CDM_LRO_AGE_TIME_MASK		GENMASK(31, 16)
- #define CDM_LRO_AGG_TIME_MASK		GENMASK(15, 0)
+ 
+ 	if (e->hash != 0xffff) {
+ 		struct airoha_foe_stats64 stats = {};
+--- a/drivers/net/ethernet/airoha/airoha_regs.h	2026-04-03 16:51:28.624731134 +1300
++++ b/drivers/net/ethernet/airoha/airoha_regs.h	2026-04-03 16:51:28.633743617 +1300
+@@ -127,6 +127,20 @@
+ #define CDM2_CRSN_QSEL_REASON_MASK(_n)	\
+ 	GENMASK(4 + (((_n) % 4) << 3),	(((_n) % 4) << 3))
  
 +#define REG_CDM_LRO_RXQ(_n, _m)	(CDM_BASE(_n) + 0x78 + ((_m) & 0x4))
 +#define LRO_RXQ_MASK(_n)		GENMASK(4 + (((_n) & 0x3) << 3), ((_n) & 0x3) << 3)
@@ -384,12 +369,12 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +#define CDM_LRO_AGG_TIME_MASK		GENMASK(15, 0)
 +
  #define REG_GDM_FWD_CFG(_n)		GDM_BASE(_n)
- #define GDM_PAD_EN_MASK			BIT(28)
- #define GDM_DROP_CRC_ERR_MASK		BIT(23)
-@@ -912,6 +926,13 @@
+ #define GDM_DROP_CRC_ERR		BIT(23)
+ #define GDM_IP4_CKSUM			BIT(22)
+@@ -903,6 +917,13 @@
  
- /* RX MSG2 */
- #define QDMA_ETH_RXMSG_AGG_COUNT_MASK	GENMASK(27, 24)
+ struct airoha_qdma_desc {
+ 	__le32 rsv;
 +#define QDMA_ETH_RXMSG_L2_LEN_MASK	GENMASK(23, 16)
 +/* RX MSG3 */
 +#define QDMA_ETH_RXMSG_TCP_WIN_MASK	GENMASK(31, 16)
@@ -397,6 +382,6 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +
 +/* RX MSG2 */
 +#define QDMA_ETH_RXMSG_AGG_COUNT_MASK	GENMASK(27, 24)
- #define QDMA_ETH_RXMSG_L2_LEN_MASK	GENMASK(23, 16)
- /* RX MSG3 */
- #define QDMA_ETH_RXMSG_TCP_WIN_MASK	GENMASK(31, 16)
+ 	__le32 ctrl;
+ 	__le32 addr;
+ 	__le32 data;
