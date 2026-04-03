@@ -1,0 +1,69 @@
+From: Joel Wiramu Pauling <aenertia@aenertia.net>
+Date: Thu, 03 Apr 2026 13:00:00 +1300
+Subject: [PATCH] net: phy: expose struct phy_package_shared for SoC PHY drivers
+
+In Linux 6.18, struct phy_package_shared was made opaque by moving
+its definition from include/linux/phy.h to phy_package.c. However,
+SoC PHY drivers like mtk-ge-soc.c need direct access to the shared
+priv pointer for per-package calibration state.
+
+Move the struct definition to an internal header that PHY subsystem
+drivers can include.
+
+Signed-off-by: Joel Wiramu Pauling <aenertia@aenertia.net>
+---
+ drivers/net/phy/phy_package.h | 19 +++++++++++++++++++
+ drivers/net/phy/phy_package.c |  9 +--------
+ 2 files changed, 20 insertions(+), 8 deletions(-)
+ create mode 100644 drivers/net/phy/phy_package.h
+
+--- /dev/null
++++ b/drivers/net/phy/phy_package.h
+@@ -0,0 +1,19 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _PHY_PACKAGE_H
++#define _PHY_PACKAGE_H
++
++#include <linux/phy.h>
++
++/* Internal definition - exported for SoC PHY drivers that need
++ * direct access to per-package shared state.
++ */
++struct phy_package_shared {
++	struct phy_device	*np;
++	int			base_addr;
++	/* With phy_package_join(), the priv member is allocated with
++	 * a size specified by the caller and freed automatically by
++	 * phy_package_leave().
++	 */
++	void			*priv;
++	unsigned int		priv_size;
++};
++
++#endif /* _PHY_PACKAGE_H */
+--- a/drivers/net/phy/phy_package.c
++++ b/drivers/net/phy/phy_package.c
+@@ -23,14 +23,7 @@
+  */
+ #include <linux/phy.h>
+ 
+-struct phy_package_shared {
+-	struct phy_device	*np;
+-	int			base_addr;
+-	/* With phy_package_join(), the priv member is allocated with
+-	 * a size specified by the caller and freed automatically by
+-	 * phy_package_leave().
+-	 */
+-	void			*priv;
+-	unsigned int		priv_size;
+-};
++#include "phy_package.h"
+ 
+ /**
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
+@@ -11,6 +11,7 @@
+ 
+ #include "../phylib.h"
++#include "../phy_package.h"
+ #include "mtk.h"

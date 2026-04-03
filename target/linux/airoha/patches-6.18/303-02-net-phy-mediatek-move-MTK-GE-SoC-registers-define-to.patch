@@ -1593,7 +1593,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  MODULE_DEVICE_TABLE(mdio, mtk_socphy_tbl);
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
-@@ -0,0 +1,387 @@
+@@ -0,0 +1,392 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +
 +#ifndef _MTK_GE_SOC_H_
@@ -1963,6 +1963,11 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +	TX_AMP_1G_A, TX_AMP_1G_B, TX_AMP_1G_C, TX_AMP_1G_D,
 +	TX_AMP_100M_A, TX_AMP_100M_B, TX_AMP_10M_A, TX_AMP_10M_B,
 +	R50_A, R50_B, R50_C, R50_D, CALIB_CONST_TYPE_MAX,
++};
++
++struct mtk_socphy_shared {
++	u32			boottrap;
++	struct mtk_socphy_priv	priv[4];
 +};
 +
 +struct airoha_socphy_shared {
