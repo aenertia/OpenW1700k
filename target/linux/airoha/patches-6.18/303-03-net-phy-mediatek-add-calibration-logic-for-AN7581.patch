@@ -1162,7 +1162,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +}
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/an7581.c
-@@ -0,0 +1,342 @@
+@@ -0,0 +1,343 @@
 +// SPDX-License-Identifier: GPL-2.0
 +
 +#include <linux/phy.h>
@@ -1170,6 +1170,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +#include <linux/mfd/syscon.h>
 +
 +#include "../phylib.h"
++#include "../phy_package.h"
 +#include "mtk.h"
 +#include "mtk-ge-soc.h"
 +
