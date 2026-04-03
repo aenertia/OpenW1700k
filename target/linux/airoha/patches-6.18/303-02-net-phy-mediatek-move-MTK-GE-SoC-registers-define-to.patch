@@ -1594,7 +1594,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  MODULE_DEVICE_TABLE(mdio, mtk_socphy_tbl);
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
-@@ -0,0 +1,392 @@
+@@ -0,0 +1,394 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +
 +#ifndef _MTK_GE_SOC_H_
@@ -1606,6 +1606,8 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 +#define MTK_GPHY_ID_MT7988			0x03a29481
 +#define MTK_GPHY_ID_AN7581			0x03a294c1
 +#define MTK_GPHY_ID_AN7583			0xc0ff0420
++
++#define MTK_PHY_MAX_LEDS			2
 +
 +#define MTK_EXT_PAGE_ACCESS			0x1f
 +#define MTK_PHY_PAGE_STANDARD			0x0000

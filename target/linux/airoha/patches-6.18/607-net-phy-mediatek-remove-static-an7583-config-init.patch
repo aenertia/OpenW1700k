@@ -1,0 +1,27 @@
+From: Joel Wiramu Pauling <aenertia@aenertia.net>
+Date: Thu, 03 Apr 2026 14:00:00 +1300
+Subject: [PATCH] net: phy: mediatek: remove static an7583_phy_config_init
+
+The an7583_phy_config_init function is now defined in the separate
+an7583.c file (added by 606 patch) with full calibration support.
+Remove the simple static stub from mtk-ge-soc.c to avoid the
+"static declaration follows non-static declaration" error.
+
+Signed-off-by: Joel Wiramu Pauling <aenertia@aenertia.net>
+---
+ drivers/net/phy/mediatek/mtk-ge-soc.c | 6 ------
+ 1 file changed, 6 deletions(-)
+
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
+@@ -1130,12 +1130,6 @@ static int an7581_phy_led_polarity_set(s
+ 			      MTK_PHY_LED_ON_POLARITY, val);
+ }
+ 
+-static int an7583_phy_config_init(struct phy_device *phydev)
+-{
+-	/* BMCR_PDOWN is enabled by default */
+-	return phy_clear_bits(phydev, MII_BMCR, BMCR_PDOWN);
+-}
+-
+ static struct phy_driver mtk_socphy_driver[] = {
