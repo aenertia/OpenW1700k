@@ -336,7 +336,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  #define EFS_DA_TX_I2MPB_A(x)			(((x) >> 0) & GENMASK(5, 0))
  #define EFS_DA_TX_I2MPB_B(x)			(((x) >> 6) & GENMASK(5, 0))
  #define EFS_DA_TX_I2MPB_C(x)			(((x) >> 12) & GENMASK(5, 0))
-@@ -345,64 +30,44 @@
+@@ -345,72 +30,41 @@
  
  #define EFS_RG_BG_RASEL(x)			(((x) >> 4) & GENMASK(2, 0))
  #define EFS_RG_REXT_TRIM(x)			(((x) >> 7) & GENMASK(5, 0))
@@ -429,9 +429,17 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 -		phydev_err(phydev, "Calibration cycle timeout\n");
 -		return ret;
 -	}
- 
- 	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
- 			   MTK_PHY_DA_CALIN_FLAG);
+-
+-	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
+-			   MTK_PHY_DA_CALIN_FLAG);
+-	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
+-	if (ret < 0)
+-		return ret;
+-	ret = FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
+-	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
+-
+-	return ret;
+-}
 --- /dev/null
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
 @@ -0,0 +1,387 @@
