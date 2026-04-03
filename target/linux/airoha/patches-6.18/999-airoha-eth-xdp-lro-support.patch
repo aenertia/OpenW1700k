@@ -30,9 +30,9 @@ LRO features (from Lorenzo Bianconi's patches):
 Signed-off-by: Joel Wiramu Pauling <aenertia@aenertia.net>
 Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 ---
---- a/drivers/net/ethernet/airoha/airoha_eth.c	2026-04-03 16:51:28.622132005 +1300
-+++ b/drivers/net/ethernet/airoha/airoha_eth.c	2026-04-03 16:51:28.633200619 +1300
-@@ -439,6 +439,39 @@
+--- a/drivers/net/ethernet/airoha/airoha_eth.c	2026-04-03 16:55:03.435178624 +1300
++++ b/drivers/net/ethernet/airoha/airoha_eth.c	2026-04-03 16:55:03.439704351 +1300
+@@ -454,6 +454,39 @@
  				 CDM_CRSN_QSEL_Q1));
  }
  
@@ -72,7 +72,7 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  static int airoha_fe_init(struct airoha_eth *eth)
  {
  	airoha_fe_maccr_init(eth);
-@@ -947,6 +980,9 @@
+@@ -961,6 +994,9 @@
  		airoha_qdma_irq_enable(&qdma->irq_banks[0], QDMA_INT_REG_IDX0,
  				       TX_DONE_INT_MASK(id));
  
@@ -82,7 +82,7 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	return done;
  }
  
-@@ -1038,6 +1074,16 @@
+@@ -1053,6 +1089,16 @@
  	}
  
  	return 0;
@@ -99,7 +99,7 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  }
  
  static void airoha_qdma_cleanup_tx_queue(struct airoha_queue *q)
-@@ -1068,6 +1114,17 @@
+@@ -1087,6 +1133,17 @@
  	dma_addr_t dma_addr;
  	const char *name;
  
@@ -117,7 +117,7 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	name = devm_kasprintf(eth->dev, GFP_KERNEL, "qdma%d-buf", id);
  	if (!name)
  		return -ENOMEM;
-@@ -2226,6 +2283,99 @@
+@@ -2322,6 +2379,99 @@
  
  	airoha_qdma_wr(qdma, REG_TRTCM_CFG_PARAM(addr), config);
  	if (read_poll_timeout(airoha_qdma_rr, val,
@@ -217,8 +217,8 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  			      val & RATE_LIMIT_PARAM_RW_DONE_MASK,
  			      USEC_PER_MSEC, 10 * USEC_PER_MSEC, true, qdma,
  			      REG_TRTCM_CFG_PARAM(addr)))
---- a/drivers/net/ethernet/airoha/airoha_eth.h	2026-04-03 16:51:28.622961078 +1300
-+++ b/drivers/net/ethernet/airoha/airoha_eth.h	2026-04-03 16:51:28.633535234 +1300
+--- a/drivers/net/ethernet/airoha/airoha_eth.h	2026-04-03 16:55:03.435947515 +1300
++++ b/drivers/net/ethernet/airoha/airoha_eth.h	2026-04-03 16:55:03.439887704 +1300
 @@ -15,6 +15,8 @@
  #include <linux/reset.h>
  #include <linux/soc/airoha/airoha_offload.h>
@@ -229,9 +229,9 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  #define AIROHA_MAX_NUM_GDM_PORTS	4
  #define AIROHA_MAX_NUM_QDMA		2
 @@ -51,6 +53,25 @@
- #define PPE_NUM				2
- #define PPE1_SRAM_NUM_ENTRIES		(8 * 1024)
- #define PPE_SRAM_NUM_ENTRIES		(2 * PPE1_SRAM_NUM_ENTRIES)
+ #define PPE_STATS_NUM_ENTRIES		(4 * 1024)
+ #define PPE_DRAM_NUM_ENTRIES		(16 * 1024)
+ #define PPE_ENTRY_SIZE			80
 +#define AIROHA_XDP_HEADROOM		XDP_PACKET_HEADROOM
 +/* Flag stored in upper bits of dma_len to mark XDP frame entries.
 + * TX completion checks this to call xdp_return_frame() instead of
@@ -251,18 +251,18 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +	 NETIF_F_TSO6 | NETIF_F_IPV6_CSUM |	\
 +	 NETIF_F_SG | NETIF_F_TSO | NETIF_F_HW_TC)
 +
- #ifdef CONFIG_NET_AIROHA_FLOW_STATS
- #define PPE1_STATS_NUM_ENTRIES		(4 * 1024)
- #else
-@@ -170,6 +191,7 @@
- 		void *buf;
- 		struct sk_buff *skb;
+ #define PPE_RAM_NUM_ENTRIES_SHIFT(_n)	(__ffs((_n) >> 10))
+ 
+ #define MTK_HDR_LEN			4
+@@ -175,6 +196,7 @@
+ 			struct sk_buff *skb;
+ 		};
  	};
 +	struct xdp_rxq_info xdp_rxq;
  	dma_addr_t dma_addr;
  	u16 dma_len;
  };
-@@ -536,6 +558,8 @@
+@@ -550,6 +572,8 @@
  
  	/* qos stats counters */
  	u64 cpu_tx_packets;
@@ -271,8 +271,8 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  	u64 fwd_tx_packets;
  
  	struct metadata_dst *dsa_meta[AIROHA_MAX_DSA_PORTS];
---- a/drivers/net/ethernet/airoha/airoha_ppe.c	2026-04-03 16:51:28.623746979 +1300
-+++ b/drivers/net/ethernet/airoha/airoha_ppe.c	2026-04-03 16:51:28.633655316 +1300
+--- a/drivers/net/ethernet/airoha/airoha_ppe.c	2026-04-03 16:55:03.437035291 +1300
++++ b/drivers/net/ethernet/airoha/airoha_ppe.c	2026-04-03 16:55:03.439969045 +1300
 @@ -18,6 +18,39 @@
  static DEFINE_MUTEX(flow_offload_mutex);
  static DEFINE_SPINLOCK(ppe_lock);
@@ -313,7 +313,7 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  static const struct rhashtable_params airoha_flow_table_params = {
  	.head_offset = offsetof(struct airoha_flow_table_entry, node),
  	.key_offset = offsetof(struct airoha_flow_table_entry, cookie),
-@@ -1195,6 +1228,34 @@
+@@ -1286,6 +1319,34 @@
  
  	idle = airoha_ppe_entry_idle_time(eth->ppe, e);
  	f->stats.lastused = jiffies - idle * HZ;
@@ -348,10 +348,10 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
  
  	if (e->hash != 0xffff) {
  		struct airoha_foe_stats64 stats = {};
---- a/drivers/net/ethernet/airoha/airoha_regs.h	2026-04-03 16:51:28.624731134 +1300
-+++ b/drivers/net/ethernet/airoha/airoha_regs.h	2026-04-03 16:51:28.633743617 +1300
-@@ -127,6 +127,20 @@
- #define CDM2_CRSN_QSEL_REASON_MASK(_n)	\
+--- a/drivers/net/ethernet/airoha/airoha_regs.h	2026-04-03 16:55:03.437773792 +1300
++++ b/drivers/net/ethernet/airoha/airoha_regs.h	2026-04-03 16:55:03.440066196 +1300
+@@ -122,6 +122,20 @@
+ #define CDM_CRSN_QSEL_REASON_MASK(_n)	\
  	GENMASK(4 + (((_n) % 4) << 3),	(((_n) % 4) << 3))
  
 +#define REG_CDM_LRO_RXQ(_n, _m)	(CDM_BASE(_n) + 0x78 + ((_m) & 0x4))
@@ -369,9 +369,9 @@ Co-developed-by: Lorenzo Bianconi <lorenzo@kernel.org>
 +#define CDM_LRO_AGG_TIME_MASK		GENMASK(15, 0)
 +
  #define REG_GDM_FWD_CFG(_n)		GDM_BASE(_n)
- #define GDM_DROP_CRC_ERR		BIT(23)
- #define GDM_IP4_CKSUM			BIT(22)
-@@ -903,6 +917,13 @@
+ #define GDM_PAD_EN_MASK			BIT(28)
+ #define GDM_DROP_CRC_ERR_MASK		BIT(23)
+@@ -898,6 +912,13 @@
  
  struct airoha_qdma_desc {
  	__le32 rsv;
