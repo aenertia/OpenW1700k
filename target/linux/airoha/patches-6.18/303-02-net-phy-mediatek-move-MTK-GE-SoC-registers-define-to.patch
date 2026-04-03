@@ -9,8 +9,8 @@ Move defines to header, refactor cal_cycle for Airoha PHY support.
 Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 ---
 
---- a/drivers/net/phy/mediatek/mtk-ge-soc.c
-+++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
+--- a/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-03-25 23:10:46.000000000 +1300
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.c	2026-04-03 13:06:13.222811272 +1300
 @@ -11,323 +11,8 @@
  
  #include "../phylib.h"
@@ -336,7 +336,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  #define EFS_DA_TX_I2MPB_A(x)			(((x) >> 0) & GENMASK(5, 0))
  #define EFS_DA_TX_I2MPB_B(x)			(((x) >> 6) & GENMASK(5, 0))
  #define EFS_DA_TX_I2MPB_C(x)			(((x) >> 12) & GENMASK(5, 0))
-@@ -346,51 +31,12 @@
+@@ -346,64 +31,55 @@
  #define EFS_RG_BG_RASEL(x)			(((x) >> 4) & GENMASK(2, 0))
  #define EFS_RG_REXT_TRIM(x)			(((x) >> 7) & GENMASK(5, 0))
  
@@ -347,12 +347,28 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 -	PAIR_C,
 -	PAIR_D,
 -};
--
++/* Wait portion of calibration cycle - exported for Airoha PHY */
++/* Calibration wait - exported for Airoha PHY drivers */
++int mtk_cal_cycle_wait(struct phy_device *phydev)
++{
++	int reg_val, ret;
+ 
 -enum calibration_mode {
 -	EFUSE_K,
 -	SW_K
 -};
--
++	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1,
++			 MTK_PHY_RG_AD_CALIN, MTK_PHY_DA_CALIN_FLAG);
++	ret = phy_read_mmd_poll_timeout(phydev, MDIO_MMD_VEND1,
++					MTK_PHY_RG_AD_CAL_CLK,
++					reg_val,
++					reg_val & MTK_PHY_DA_CAL_CLK,
++					500,
++					ANALOG_INTERNAL_OPERATION_MAX_US,
++					false);
++	if (ret)
++		return ret;
+ 
 -enum CAL_ITEM {
 -	REXT,
 -	TX_OFFSET,
@@ -360,70 +376,70 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 -	TX_R50,
 -	TX_VCM
 -};
--
++	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1,
++			   MTK_PHY_RG_AD_CALIN, MTK_PHY_DA_CALIN_FLAG);
++	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1,
++			   MTK_PHY_RG_AD_CAL_COMP);
+ 
 -enum CAL_MODE {
 -	EFUSE_M,
 -	SW_M
 -};
--
++	return ret < 0 ? ret : FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
++}
+ 
 -struct mtk_socphy_shared {
 -	u32			boottrap;
 -	struct mtk_socphy_priv	priv[4];
 -};
--
++	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
++			   MTK_PHY_DA_CALIN_FLAG);
++	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
++	if (ret < 0)
++		return ret;
+ 
 -/* One calibration cycle consists of:
 - * 1.Set DA_CALIN_FLAG high to start calibration. Keep it high
 - *   until AD_CAL_COMP is ready to output calibration result.
 - * 2.Wait until DA_CAL_CLK is available.
 - * 3.Fetch AD_CAL_COMP_OUT.
 - */
--static int cal_cycle(struct phy_device *phydev, int devad,
--		     u32 regnum, u16 mask, u16 cal_val)
-+/* Wait portion of calibration cycle - exported for Airoha PHY */
-+int mtk_cal_cycle_wait(struct phy_device *phydev)
- {
- 	int reg_val;
- 	int ret;
- 
--	phy_modify_mmd(phydev, devad, regnum,
--		       mask, cal_val);
- 	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
- 			 MTK_PHY_DA_CALIN_FLAG);
- 
-@@ -406,6 +52,31 @@
- 
- 	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
- 			   MTK_PHY_DA_CALIN_FLAG);
-+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
-+	if (ret < 0)
-+		return ret;
-+
 +	return FIELD_GET(MTK_PHY_AD_CAL_COMP_OUT_MASK, ret);
 +}
 +
 +/* One calibration cycle */
-+static int cal_cycle(struct phy_device *phydev, int devad,
-+		     u32 regnum, u16 mask, u16 cal_val)
-+{
-+	int ret;
-+
-+	phy_modify_mmd(phydev, devad, regnum,
-+		       mask, cal_val);
-+
+ static int cal_cycle(struct phy_device *phydev, int devad,
+ 		     u32 regnum, u16 mask, u16 cal_val)
+ {
+-	int reg_val;
+ 	int ret;
+ 
+ 	phy_modify_mmd(phydev, devad, regnum,
+ 		       mask, cal_val);
+-	phy_set_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
+-			 MTK_PHY_DA_CALIN_FLAG);
+ 
+-	ret = phy_read_mmd_poll_timeout(phydev, MDIO_MMD_VEND1,
+-					MTK_PHY_RG_AD_CAL_CLK, reg_val,
+-					reg_val & MTK_PHY_DA_CAL_CLK, 500,
+-					ANALOG_INTERNAL_OPERATION_MAX_US,
+-					false);
+-	if (ret) {
+-		phydev_err(phydev, "Calibration cycle timeout\n");
+-		return ret;
+-	}
 +	ret = mtk_cal_cycle_wait(phydev);
 +	phydev_dbg(phydev, "cal_val: 0x%x, ret: %d\n", cal_val, ret);
 +
 +	return ret;
 +}
 +
-+
-+	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
-+			   MTK_PHY_DA_CALIN_FLAG);
- 	ret = phy_read_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CAL_COMP);
- 	if (ret < 0)
- 		return ret;
+ 
+-	phy_clear_bits_mmd(phydev, MDIO_MMD_VEND1, MTK_PHY_RG_AD_CALIN,
+-			   MTK_PHY_DA_CALIN_FLAG);
+
 --- /dev/null
-+++ b/drivers/net/phy/mediatek/mtk-ge-soc.h
++++ b/drivers/net/phy/mediatek/mtk-ge-soc.h	1970-01-01 12:00:00.000000000 +1200
 @@ -0,0 +1,387 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +
