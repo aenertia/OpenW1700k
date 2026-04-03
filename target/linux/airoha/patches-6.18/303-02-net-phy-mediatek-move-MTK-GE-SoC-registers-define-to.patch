@@ -11,7 +11,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
 
 --- a/drivers/net/phy/mediatek/mtk-ge-soc.c
 +++ b/drivers/net/phy/mediatek/mtk-ge-soc.c
-@@ -1,1550 +1,1202 @@
+@@ -1,1550 +1,1203 @@
  // SPDX-License-Identifier: GPL-2.0+
  #include <linux/bitfield.h>
  #include <linux/bitmap.h>
@@ -24,6 +24,7 @@ Signed-off-by: Christian Marangi <ansuelsmth@gmail.com>
  #include <linux/of.h>
  
  #include "../phylib.h"
++#include "../phy_package.h"
  #include "mtk.h"
 +#include "mtk-ge-soc.h"
  
