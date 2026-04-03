@@ -1,60 +1,41 @@
 From: Joel Wiramu Pauling <aenertia@aenertia.net>
 Date: Thu, 03 Apr 2026 13:00:00 +1300
-Subject: [PATCH] net: phy: expose struct phy_package_shared for SoC PHY drivers
+Subject: [PATCH] net: phy: create phy_package.h for SoC PHY drivers
 
-In Linux 6.18, struct phy_package_shared was made opaque by moving
-its definition from include/linux/phy.h to phy_package.c. However,
-SoC PHY drivers like mtk-ge-soc.c need direct access to the shared
-priv pointer for per-package calibration state.
-
-Move the struct definition to an internal header that PHY subsystem
-drivers can include.
+In Linux 6.18, struct phy_package_shared was made opaque. Create an
+internal header with the struct definition so SoC PHY drivers that
+need direct priv access can include it.
 
 Signed-off-by: Joel Wiramu Pauling <aenertia@aenertia.net>
 ---
- drivers/net/phy/phy_package.h | 19 +++++++++++++++++++
- drivers/net/phy/phy_package.c |  9 +--------
- 2 files changed, 20 insertions(+), 8 deletions(-)
+ drivers/net/phy/phy_package.h | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
  create mode 100644 drivers/net/phy/phy_package.h
 
 --- /dev/null
 +++ b/drivers/net/phy/phy_package.h
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,25 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#ifndef _PHY_PACKAGE_H
 +#define _PHY_PACKAGE_H
 +
 +#include <linux/phy.h>
 +
-+/* Internal definition - exported for SoC PHY drivers that need
-+ * direct access to per-package shared state.
-+ */
 +struct phy_package_shared {
-+	struct phy_device	*np;
-+	int			base_addr;
-+	/* With phy_package_join(), the priv member is allocated with
-+	 * a size specified by the caller and freed automatically by
++	u8 base_addr;
++	/* With PHY package defined in DT this points to the PHY package node */
++	struct device_node *np;
++	refcount_t refcnt;
++	unsigned long flags;
++	size_t priv_size;
++
++	/* private data pointer */
++	/* note that this pointer is shared between different phydevs and
++	 * the user has to take care of appropriate locking. It is allocated
++	 * and freed automatically by phy_package_join() and
 +	 * phy_package_leave().
 +	 */
-+	void			*priv;
-+	unsigned int		priv_size;
++	void *priv;
 +};
 +
 +#endif /* _PHY_PACKAGE_H */
---- a/drivers/net/phy/phy_package.c
-+++ b/drivers/net/phy/phy_package.c
-@@ -23,13 +23,4 @@
-  */
- #include <linux/phy.h>
- 
--struct phy_package_shared {
--	struct phy_device	*np;
--	int			base_addr;
--	/* With phy_package_join(), the priv member is allocated with
--	 * a size specified by the caller and freed automatically by
--	 * phy_package_leave().
--	 */
--	void			*priv;
--	unsigned int		priv_size;
--};
-+#include "phy_package.h"
