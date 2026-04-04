@@ -55,7 +55,7 @@ KERNEL_MAKE := \
 		ARCH=$(BPF_KARCH) \
 		CROSS_COMPILE=$(BPF_ARCH)-linux- \
 		LLVM=1 KBUILD_SYM32=n \
-		CC="$(CLANG) --target=$(BPF_TARGET)" \
+		CC="$(CLANG) --target=$(BPF_TARGET) -Wno-unused-command-line-argument" \
 		LD="$(TARGET_CROSS)ld" \
 		HOSTCC="$(HOSTCC)" \
 		HOSTCXX="$(HOSTCXX)" \
