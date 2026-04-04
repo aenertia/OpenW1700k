@@ -1,0 +1,101 @@
+From: ROCKNIX <rocknix@rocknix.org>
+Date: Sun, 05 Apr 2026 00:00:00 +0000
+Subject: [PATCH] net: airoha: fix XDP/LRO compile and runtime bugs
+
+Fix compile errors and runtime bugs introduced by the XDP/LRO support patch:
+
+1. Fix CDM_CRSN_QSEL_REASON_MASK macro body severed by patch insertion
+2. Fix pp_params undeclared in airoha_qdma_init_rx_pp()
+3. Fix desc->tcp_ts_reply field access (field doesn't exist, use desc->msg0)
+4. Fix DMA length corruption when unmapping XDP frames in TX completion
+5. Fix XDP frames incorrectly freed as SKBs in TX completion
+
+Signed-off-by: ROCKNIX <rocknix@rocknix.org>
+---
+--- a/drivers/net/ethernet/airoha/airoha_regs.h
++++ b/drivers/net/ethernet/airoha/airoha_regs.h
+@@ -120,6 +120,7 @@
+ 
+ #define REG_CDM_CRSN_QSEL(_n, _m)	(CDM_BASE(_n) + 0x10 + ((_m) << 2))
+ #define CDM_CRSN_QSEL_REASON_MASK(_n)	\
++	GENMASK(4 + (((_n) % 4) << 3),	(((_n) % 4) << 3))
+ 
+ #define REG_CDM_LRO_RXQ(_n, _m)	(CDM_BASE(_n) + 0x78 + ((_m) & 0x4))
+ #define LRO_RXQ_MASK(_n)		(GENMASK(4, 0) << (((_n) & 0x3) << 3))
+@@ -135,8 +136,6 @@
+ #define CDM_LRO_AGE_TIME_MASK		GENMASK(31, 16)
+ #define CDM_LRO_AGG_TIME_MASK		GENMASK(15, 0)
+ 
+-	GENMASK(4 + (((_n) % 4) << 3),	(((_n) % 4) << 3))
+-
+ #define REG_GDM_FWD_CFG(_n)		GDM_BASE(_n)
+ #define GDM_PAD_EN_MASK			BIT(28)
+ #define GDM_DROP_CRC_ERR_MASK		BIT(23)
+--- a/drivers/net/ethernet/airoha/airoha_eth.c
++++ b/drivers/net/ethernet/airoha/airoha_eth.c
+@@ -793,7 +793,7 @@
+ 					 (TCPOPT_NOP << 16) |
+ 					 (TCPOPT_TIMESTAMP << 8) |
+ 					 TCPOLEN_TIMESTAMP)) {
+-			u32 tcp_ts_reply = le32_to_cpu(desc->tcp_ts_reply);
++			u32 tcp_ts_reply = le32_to_cpu(desc->msg0);
+ 
+ 			put_unaligned_be32(tcp_ts_reply, topt + 2);
+ 		}
+@@ -1019,7 +1019,7 @@
+ static int airoha_qdma_init_rx_pp(struct airoha_queue *q, bool lro_queue)
+ {
+ 
+-	q->buf_size = pp_params.max_len / (2 * (1 + lro_queue));
++	q->buf_size = PAGE_SIZE / (2 * (1 + lro_queue));
+ 
+ 	return 0;
+ }
+@@ -1221,8 +1221,14 @@
+ 		e = &q->entry[index];
+ 		skb = e->skb;
+ 
+-		dma_unmap_single(eth->dev, e->dma_addr, e->dma_len,
+-				 DMA_TO_DEVICE);
++		if (e->dma_len & AIROHA_TXQ_XDP_FRAME) {
++			dma_unmap_single(eth->dev, e->dma_addr,
++					 e->dma_len & AIROHA_TXQ_LEN_MASK,
++					 DMA_TO_DEVICE);
++		} else {
++			dma_unmap_single(eth->dev, e->dma_addr, e->dma_len,
++					 DMA_TO_DEVICE);
++		}
+ 		e->dma_addr = 0;
+ 		list_add_tail(&e->list, &q->tx_list);
+ 
+@@ -1230,7 +1236,9 @@
+ 		WRITE_ONCE(desc->msg1, 0);
+ 		q->queued--;
+ 
+-		if (skb) {
++		if (e->dma_len & AIROHA_TXQ_XDP_FRAME) {
++			xdp_return_frame((struct xdp_frame *)skb);
++		} else if (skb) {
+ 			u16 queue = skb_get_queue_mapping(skb);
+ 			struct netdev_queue *txq;
+ 
+@@ -1366,9 +1374,16 @@
+ 		if (!e->dma_addr)
+ 			continue;
+ 
+-		dma_unmap_single(eth->dev, e->dma_addr, e->dma_len,
+-				 DMA_TO_DEVICE);
+-		dev_kfree_skb_any(e->skb);
++		if (e->dma_len & AIROHA_TXQ_XDP_FRAME) {
++			dma_unmap_single(eth->dev, e->dma_addr,
++					 e->dma_len & AIROHA_TXQ_LEN_MASK,
++					 DMA_TO_DEVICE);
++			xdp_return_frame((struct xdp_frame *)e->skb);
++		} else {
++			dma_unmap_single(eth->dev, e->dma_addr, e->dma_len,
++					 DMA_TO_DEVICE);
++			dev_kfree_skb_any(e->skb);
++		}
+ 		e->dma_addr = 0;
+ 		e->skb = NULL;
+ 		list_add_tail(&e->list, &q->tx_list);
