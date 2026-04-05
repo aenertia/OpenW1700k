@@ -1,0 +1,39 @@
+From: ROCKNIX <rocknix@rocknix.org>
+Date: Sun, 05 Apr 2026 00:00:00 +0000
+Subject: [PATCH] net: airoha: add XDP mark-triggered PPE soft hook for selective offload
+
+Add a soft hook in the RX NAPI path that triggers immediate PPE flow
+promotion when skb->mark indicates an XDP-classified bulk or normal
+traffic flow (marks 0xAF01 and 0xAF02). This bypasses the hardware
+rate threshold (PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED) for flows
+already classified by the XDP program.
+
+The mark is set by the XDP classifier via metadata at data-64 (magic
+0xA1B2C3D4). Interactive (0xAF03) and realtime (0xAF04) flows are
+excluded to preserve CPU-side AQM for latency-sensitive traffic.
+
+The pr_debug line is compiled out unless dynamic debug is enabled,
+adding zero overhead in production.
+
+Signed-off-by: ROCKNIX <rocknix@rocknix.org>
+---
+--- a/drivers/net/ethernet/airoha/airoha_eth.c
++++ b/drivers/net/ethernet/airoha/airoha_eth.c
+@@ -962,9 +962,14 @@ static int airoha_qdma_rx_process(struct
+ 				     PKT_HASH_TYPE_L4);
+ 
+ 		reason = FIELD_GET(AIROHA_RXD4_PPE_CPU_REASON, msg1);
+-		if (reason == PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED)
+-			airoha_ppe_check_skb(&eth->ppe->dev, q->skb, hash,
+-					     false);
++		if (reason == PPE_CPU_REASON_HIT_UNBIND_RATE_REACHED ||
++		    (q->skb->mark >= 0xAF01 && q->skb->mark <= 0xAF02 &&
++		     hash != AIROHA_RXD4_FOE_ENTRY)) {
++			pr_debug("airoha_soft_hook: hash=%u mark=0x%x reason=%u\n",
++				 hash, q->skb->mark, reason);
++			airoha_ppe_check_skb(&eth->ppe->dev, q->skb, hash,
++					     false);
++		}
+ 
+ 		done++;
+ 		napi_gro_receive(&q->napi, q->skb);
