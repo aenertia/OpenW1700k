@@ -316,7 +316,8 @@ static void sync_hardware_counters(const struct flow_key *key,
 		 * conntrack NFCT_Q_UPDATE sets absolute values, so we must
 		 * pass the running total, not just the latest delta.
 		 */
-		struct internal_flow *fl = flow_table_find(key);
+		int fl_idx = flow_table_find(key);
+		struct internal_flow *fl = (fl_idx >= 0) ? &flow_table[fl_idx] : NULL;
 		uint64_t total_bytes = hw_bytes_delta;
 		uint64_t total_pkts  = hw_pkts_delta;
 
