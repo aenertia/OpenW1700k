@@ -9,7 +9,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=airoha-offload
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 PKG_LICENSE:=GPL-2.0-or-later
 PKG_MAINTAINER:=Joel Wirāmu Pauling <aenertia@aenertia.net>
@@ -66,6 +66,9 @@ define Package/airoha-offload/install
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./files/99-disable-native-hwnat \
 		$(1)/etc/uci-defaults/99-disable-native-hwnat
+
+	$(INSTALL_DIR) $(1)/usr/share/nftables.d/ruleset-post
+	$(INSTALL_DATA) ./files/10-offload-veto.nft $(1)/usr/share/nftables.d/ruleset-post/
 endef
 
 $(eval $(call BuildPackage,airoha-offload))

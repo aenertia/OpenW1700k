@@ -1,0 +1,11 @@
+# airoha-offload: mark-gated flowtable rules
+# Prevent interactive/realtime flows (XDP/TC-BPF classified) from entering
+# flowtable. These flows stay on CPU for fq_codel AQM to preserve latency.
+#
+# Marks: 0xAF03 = interactive (CS4/AF4x), 0xAF04 = realtime (EF/CS5+)
+# Marks 0xAF01 (bulk), 0xAF02 (normal), and unmarked flows still offload.
+#
+# Applied at ruleset-post: inserts at chain position 0, BEFORE fw4's
+# "flow offload @ft" rule, so marked flows are accepted first.
+
+insert rule inet fw4 forward meta mark { 0xaf03, 0xaf04 } accept comment "airoha: keep on CPU"
