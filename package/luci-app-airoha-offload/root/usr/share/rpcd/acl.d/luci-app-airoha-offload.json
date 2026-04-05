@@ -1,0 +1,26 @@
+{
+  "luci-app-airoha-offload": {
+    "description": "Grant access to LuCI eBPF/XDP Offload telemetry",
+    "read": {
+      "ubus": {
+        "luci.airoha_offload": [
+          "get_status",
+          "get_programs",
+          "get_maps",
+          "get_ppe_flows",
+          "get_interfaces"
+        ]
+      }
+    },
+    "write": {
+      "ubus": {
+        "luci.airoha_offload": [
+          "restart_daemon",
+          "flush_flowtable",
+          "toggle_bpf_stats",
+          "toggle_soft_hook_debug"
+        ]
+      }
+    }
+  }
+}

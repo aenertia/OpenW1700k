@@ -1,0 +1,13 @@
+{
+  "admin/status/ebpf": {
+    "title": "eBPF Offload",
+    "order": 99,
+    "action": {
+      "type": "view",
+      "path": "airoha-offload/status"
+    },
+    "depends": {
+      "acl": [ "luci-app-airoha-offload" ]
+    }
+  }
+}
