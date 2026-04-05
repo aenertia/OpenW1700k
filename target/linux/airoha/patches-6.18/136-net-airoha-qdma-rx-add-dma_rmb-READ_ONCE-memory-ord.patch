@@ -1,0 +1,88 @@
+From 0000000000000000000000000000000000000136 Mon Sep 17 00:00:00 2001
+From: Lorenzo Bianconi <lorenzo@kernel.org>
+Date: Fri, 3 Apr 2026 10:00:00 +0200
+Subject: [PATCH] net: airoha: Add dma_rmb() and READ_ONCE() in
+ airoha_qdma_rx_process()
+
+Add dma_rmb() after checking the QDMA RX descriptor DONE bit to ensure
+proper memory ordering: without this barrier the CPU may speculate reads
+of descriptor fields (msg1, msg0) before the DMA engine has finished
+writing them, leading to stale data being consumed.
+
+Use READ_ONCE() when reading desc->ctrl, desc->msg1 and desc->msg0 to
+prevent the compiler from caching or reordering these DMA-mapped reads.
+
+Refactor airoha_qdma_get_gdm_port() to accept the msg1 value directly
+rather than the raw descriptor pointer, so the READ_ONCE() semantics are
+guaranteed at the call site in airoha_qdma_rx_process().
+
+Move the virt_to_head_page() call to after the dma_rmb() barrier so the
+page reference is not taken before DMA completion is confirmed.
+
+Signed-off-by: Lorenzo Bianconi <lorenzo@kernel.org>
+Link: https://patchwork.kernel.org/project/netdevbpf/patch/20260403-airoha_qdma_rx_process-fix-reordering-v2-1-181e6e23d27b@kernel.org/
+---
+ drivers/net/ethernet/airoha/airoha_eth.c | 24 +++++++++++++++++-------
+ 1 file changed, 17 insertions(+), 7 deletions(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_eth.c
++++ b/drivers/net/ethernet/airoha/airoha_eth.c
+@@ -581,10 +581,9 @@ static int airoha_qdma_fill_rx_queue(st
+ 	return nframes;
+ }
+ 
+-static int airoha_qdma_get_gdm_port(struct airoha_eth *eth,
+-				    struct airoha_qdma_desc *desc)
++static int airoha_qdma_get_gdm_port(struct airoha_eth *eth, u32 msg1)
+ {
+-	u32 port, sport, msg1 = le32_to_cpu(desc->msg1);
++	u32 port, sport;
+ 
+ 	sport = FIELD_GET(QDMA_ETH_RXMSG_SPORT_MASK, msg1);
+ 	switch (sport) {
+@@ -612,15 +611,17 @@ static int airoha_qdma_rx_process(struc
+ 	while (done < budget) {
+ 		struct airoha_queue_entry *e = &q->entry[q->tail];
+ 		struct airoha_qdma_desc *desc = &q->desc[q->tail];
+-		u32 hash, reason, msg1 = le32_to_cpu(desc->msg1);
+-		struct page *page = virt_to_head_page(e->buf);
+-		u32 desc_ctrl = le32_to_cpu(desc->ctrl);
++		u32 hash, reason, msg1, desc_ctrl;
+ 		struct airoha_gdm_port *port;
+ 		int data_len, len, p;
++		struct page *page;
+ 
++		desc_ctrl = le32_to_cpu(READ_ONCE(desc->ctrl));
+ 		if (!(desc_ctrl & QDMA_DESC_DONE_MASK))
+ 			break;
+ 
++		dma_rmb();
++
+ 		q->tail = (q->tail + 1) % q->ndesc;
+ 		q->queued--;
+ 
+@@ -633,10 +634,12 @@ static int airoha_qdma_rx_process(struc
+ 		if (!len || data_len < len)
+ 			goto free_frag;
+ 
+-		p = airoha_qdma_get_gdm_port(eth, desc);
++		msg1 = le32_to_cpu(READ_ONCE(desc->msg1));
++		p = airoha_qdma_get_gdm_port(eth, msg1);
+ 		if (p < 0 || !eth->ports[p])
+ 			goto free_frag;
+ 
++		page = virt_to_head_page(e->buf);
+ 		port = eth->ports[p];
+ 		if (!q->skb) { /* first buffer */
+ 			q->skb = napi_build_skb(e->buf, q->buf_size);
+@@ -670,8 +673,8 @@ static int airoha_qdma_rx_process(struc
+ 			 * DMA descriptor. Report DSA tag to the DSA stack
+ 			 * via skb dst info.
+ 			 */
+-			u32 sptag = FIELD_GET(QDMA_ETH_RXMSG_SPTAG,
+-					      le32_to_cpu(desc->msg0));
++			u32 msg0 = le32_to_cpu(READ_ONCE(desc->msg0));
++			u32 sptag = FIELD_GET(QDMA_ETH_RXMSG_SPTAG, msg0);
+ 
+ 			if (sptag < ARRAY_SIZE(port->dsa_meta) &&
+ 			    port->dsa_meta[sptag])
