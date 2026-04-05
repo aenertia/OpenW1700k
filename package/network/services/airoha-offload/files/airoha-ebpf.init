@@ -103,6 +103,49 @@ start_service() {
 		logger -t airoha-ebpf "bpftool not found, maps not pinned"
 	fi
 
+	# === Attach TC-BPF classifier to MTK DSA user ports (lan3, lan4) ===
+	# lan3/lan4 use xdpgeneric (no ndo_bpf) and break bridge delivery with
+	# native XDP.  TC-BPF classifies their ingress traffic and writes
+	# skb->mark, sharing ring-buffer and DSCP maps with the XDP program.
+	# Maps are reused from the XDP-pinned paths so the daemon sees a
+	# unified flow event stream from both interfaces.
+	local TC_OBJ="/lib/bpf/airoha_dsa_classify.o"
+	for iface in lan3 lan4; do
+		if ip link show "$iface" > /dev/null 2>&1; then
+			tc qdisc add dev "$iface" clsact 2>/dev/null || true
+			if [ -e "$BPF_PIN/flow_event_rb" ] && \
+			   [ -e "$BPF_PIN/dscp_class_map" ]; then
+				tc filter add dev "$iface" ingress bpf da \
+					obj "$TC_OBJ" sec tc \
+					map name flow_event_rb \
+						pinned "$BPF_PIN/flow_event_rb" \
+					map name dscp_class_map \
+						pinned "$BPF_PIN/dscp_class_map" \
+					2>/dev/null || \
+				logger -t airoha-ebpf \
+					"failed to attach TC+pinned-maps to $iface, trying standalone"
+				# Verify filter was actually attached
+				if ! tc filter show dev "$iface" ingress 2>/dev/null | \
+				   grep -q bpf; then
+					# Fallback: attach without map pinning
+					# (maps will be private; daemon won't see events
+					#  but classification marks still set)
+					tc filter add dev "$iface" ingress bpf da \
+						obj "$TC_OBJ" sec tc 2>/dev/null || \
+					logger -t airoha-ebpf \
+						"failed to attach TC to $iface"
+				fi
+			else
+				# XDP maps not yet pinned — attach with own maps
+				tc filter add dev "$iface" ingress bpf da \
+					obj "$TC_OBJ" sec tc 2>/dev/null || \
+				logger -t airoha-ebpf \
+					"failed to attach TC (no-pin) to $iface"
+			fi
+			logger -t airoha-ebpf "TC-BPF attached to $iface"
+		fi
+	done
+
 	# === 10G Network Performance Tuning (Phase 6) ===
 	# The QDMA has 32 RX/TX queues but only 1 active IRQ (airoha_eth.0).
 	# All packets funnel through CPU0 by default. RPS distributes across
@@ -152,6 +195,12 @@ start_service() {
 }
 
 stop_service() {
+	# Detach TC-BPF from DSA user ports (must precede XDP teardown so
+	# the shared ring buffer FD stays alive until both are done)
+	for iface in lan3 lan4; do
+		tc qdisc del dev "$iface" clsact 2>/dev/null || true
+	done
+
 	# Detach XDP from all interfaces
 	for iface in $IFACES; do
 		ip link set dev "$iface" xdp off 2>/dev/null || true
@@ -162,4 +211,5 @@ stop_service() {
 	rm -f "$BPF_PIN"/mac_fdb_map
 	rm -f "$BPF_PIN"/port_to_bridge_map
 	rm -f "$BPF_PIN"/flow_event_rb
+	rm -f "$BPF_PIN"/dscp_class_map
 }

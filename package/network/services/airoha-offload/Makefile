@@ -43,6 +43,8 @@ endef
 define Build/Compile
 	# Compile eBPF XDP datapath via OpenWrt bpf-headers toolchain
 	$(call CompileBPF,$(PKG_BUILD_DIR)/airoha_hybrid_offload.c)
+	# Compile TC-BPF classifier for MTK DSA user ports (lan3/lan4)
+	$(call CompileBPF,$(PKG_BUILD_DIR)/airoha_dsa_classify.c)
 	# Compile userspace sync daemon
 	$(TARGET_CC) $(TARGET_CFLAGS) -Wall \
 		-o $(PKG_BUILD_DIR)/airoha-sync-daemon \
@@ -53,6 +55,7 @@ endef
 define Package/airoha-offload/install
 	$(INSTALL_DIR) $(1)/lib/bpf
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/airoha_hybrid_offload.o $(1)/lib/bpf/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/airoha_dsa_classify.o $(1)/lib/bpf/
 
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/airoha-sync-daemon $(1)/usr/sbin/
