@@ -1,0 +1,273 @@
+From 0000000000000000000000000000000000000008 Mon Sep 17 00:00:00 2001
+From: Felix Fietkau <nbd@nbd.name>
+Date: Tue, 24 Mar 2026 15:49:04 +0000
+Subject: [PATCH 1/2] wifi: mt76: mt7996: fix out-of-bounds array access during
+ hardware restart
+
+Add mt7996_sta_link() and mt7996_sta_link_protected() inline helpers that
+bounds-check the link_id index against IEEE80211_MLD_MAX_NUM_LINKS before
+dereferencing msta->link[link_id]. Without this check, a link_id value
+from a corrupted or unexpected hardware state could cause an out-of-bounds
+access on the link array.
+
+Replace all open-coded rcu_dereference(msta->link[link_id]) and
+mt76_dereference(msta->link[link_id], ...) calls with the new helpers
+throughout debugfs.c, mac.c, main.c, mcu.c.
+
+Fixes: CVE-2026-23325
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+Link: https://patchwork.kernel.org/project/linux-wireless/patch/20260324154904.2555603-1-nbd@nbd.name/
+---
+ drivers/net/wireless/mediatek/mt76/mt7996/debugfs.c |  2 +-
+ drivers/net/wireless/mediatek/mt76/mt7996/mac.c     |  6 +++---
+ drivers/net/wireless/mediatek/mt76/mt7996/main.c    | 16 ++++++++--------
+ drivers/net/wireless/mediatek/mt76/mt7996/mcu.c     | 18 +++++++++---------
+ drivers/net/wireless/mediatek/mt76/mt7996/mt7996.h  | 19 +++++++++++++++++++
+ 5 files changed, 40 insertions(+), 21 deletions(-)
+
+--- a/drivers/net/wireless/mediatek/mt76/mt7996/debugfs.c
++++ b/drivers/net/wireless/mediatek/mt76/mt7996/debugfs.c
+@@ -664,7 +664,7 @@ mt7996_sta_hw_queue_read(void *data, st
+ 		if (!mlink)
+ 			continue;
+ 
+-		msta_link = rcu_dereference(msta->link[link_id]);
++		msta_link = mt7996_sta_link(msta, link_id);
+ 		if (!msta_link)
+ 			continue;
+ 
+@@ -1042,7 +1042,7 @@ static ssize_t mt7996_link_sta_fixed_ra
+ 
+ 	mutex_lock(&dev->mt76.mutex);
+ 
+-	msta_link = mt76_dereference(msta->link[link_sta->link_id], &dev->mt76);
++	msta_link = mt7996_sta_link_protected(dev, msta, link_sta->link_id);
+ 	if (!msta_link) {
+ 		ret = -EINVAL;
+ 		goto out;
+--- a/drivers/net/wireless/mediatek/mt76/mt7996/mac.c
++++ b/drivers/net/wireless/mediatek/mt76/mt7996/mac.c
+@@ -48,7 +48,7 @@ static struct mt76_wcid *mt7996_rx_get_
+ 		if (mlink->band_idx != band_idx)
+ 			continue;
+ 
+-		msta_link = rcu_dereference(msta->link[i]);
++		msta_link = mt7996_sta_link(msta, i);
+ 		break;
+ 	}
+ 
+@@ -1038,7 +1038,7 @@ int mt7996_tx_prepare_skb(struct mt76_d
+ 	if (link_id != wcid->link_id && link_id != IEEE80211_LINK_UNSPECIFIED) {
+ 		if (msta) {
+ 			struct mt7996_sta_link *msta_link =
+-				rcu_dereference(msta->link[link_id]);
++				mt7996_sta_link(msta, link_id);
+ 
+ 			if (msta_link)
+ 				wcid = &msta_link->wcid;
+@@ -1346,7 +1346,7 @@ mt7996_mac_tx_free(struct mt7996_dev *d
+ 				 IEEE80211_MLD_MAX_NUM_LINKS) {
+ 				struct mt7996_sta_link *msta_link;
+ 
+-				msta_link = rcu_dereference(msta->link[id]);
++				msta_link = mt7996_sta_link(msta, id);
+ 				if (!msta_link)
+ 					continue;
+ 
+--- a/drivers/net/wireless/mediatek/mt76/mt7996/main.c
++++ b/drivers/net/wireless/mediatek/mt76/mt7996/main.c
+@@ -207,8 +207,7 @@ mt7996_set_hw_key(struct ieee80211_hw *
+ 		struct mt7996_sta *msta;
+ 
+ 		msta = (struct mt7996_sta *)sta->drv_priv;
+-		msta_link = mt76_dereference(msta->link[link_id],
+-					     &dev->mt76);
++		msta_link = mt7996_sta_link_protected(dev, msta, link_id);
+ 		if (!msta_link)
+ 			return 0;
+ 
+@@ -1381,7 +1380,7 @@ mt7996_mac_sta_event(struct mt7996_dev
+ 		if (!link)
+ 			continue;
+ 
+-		msta_link = mt76_dereference(msta->link[link_id], &dev->mt76);
++		msta_link = mt7996_sta_link_protected(dev, msta, link_id);
+ 		if (!msta_link)
+ 			continue;
+ 
+@@ -1573,7 +1572,7 @@ static void mt7996_tx(struct ieee80211_
+ 	if (msta) {
+ 		struct mt7996_sta_link *msta_link;
+ 
+-		msta_link = rcu_dereference(msta->link[link_id]);
++		msta_link = mt7996_sta_link(msta, link_id);
+ 		if (msta_link)
+ 			wcid = &msta_link->wcid;
+ 	}
+@@ -1944,7 +1943,7 @@ static void mt7996_link_sta_rc_update(s
+ 
+ 	rcu_read_lock();
+ 
+-	msta_link = rcu_dereference(msta->link[link_sta->link_id]);
++	msta_link = mt7996_sta_link(msta, link_sta->link_id);
+ 	if (msta_link) {
+ 		struct mt7996_dev *dev = mt7996_hw_dev(hw);
+ 
+@@ -1961,7 +1960,7 @@ static void mt7996_sta_rate_ctrl_update
+ 	struct mt7996_sta_link *msta_link;
+ 	u32 *changed = data;
+ 
+-	msta_link = rcu_dereference(msta->link[msta->deflink_id]);
++	msta_link = mt7996_sta_link(msta, msta->deflink_id);
+ 	if (msta_link)
+ 		mt7996_link_rate_ctrl_update(&changed, msta_link);
+ }
+@@ -2011,7 +2010,7 @@ static void mt7996_sta_set_4addr(struct
+ 		if (!link)
+ 			continue;
+ 
+-		msta_link = mt76_dereference(msta->link[link_id], &dev->mt76);
++		msta_link = mt7996_sta_link_protected(dev, msta, link_id);
+ 		if (!msta_link)
+ 			continue;
+ 
+@@ -2049,7 +2048,7 @@ static void mt7996_sta_set_decap_offloa
+ 		if (!link)
+ 			continue;
+ 
+-		msta_link = mt76_dereference(msta->link[link_id], &dev->mt76);
++		msta_link = mt7996_sta_link_protected(dev, msta, link_id);
+ 		if (!msta_link)
+ 			continue;
+ 
+@@ -2389,7 +2388,7 @@ mt7996_net_fill_forward_path(struct iee
+ 	if (!link)
+ 		return -EIO;
+ 
+-	msta_link = rcu_dereference(msta->link[msta->deflink_id]);
++	msta_link = mt7996_sta_link(msta, msta->deflink_id);
+ 	if (!msta_link)
+ 		return -EIO;
+ 
+--- a/drivers/net/wireless/mediatek/mt76/mt7996/mcu.c
++++ b/drivers/net/wireless/mediatek/mt76/mt7996/mcu.c
+@@ -1136,7 +1136,7 @@ mt7996_mcu_bss_basic_tlv(struct sk_buff
+ 			struct mt7996_sta_link *msta_link;
+ 			int link_id = link_conf->link_id;
+ 
+-			msta_link = rcu_dereference(msta->link[link_id]);
++			msta_link = mt7996_sta_link(msta, link_id);
+ 			if (msta_link)
+ 				sta_wlan_idx = msta_link->wcid.idx;
+ 		}
+@@ -1429,7 +1429,7 @@ int mt7996_mcu_add_tx_ba(struct mt7996_
+ 		struct mt7996_sta_link *msta_link;
+ 		struct mt7996_vif_link *link;
+ 
+-		msta_link = mt76_dereference(msta->link[link_id], &dev->mt76);
++		msta_link = mt7996_sta_link_protected(dev, msta, link_id);
+ 		if (!msta_link)
+ 			continue;
+ 
+@@ -1463,7 +1463,7 @@ int mt7996_mcu_add_rx_ba(struct mt7996_
+ 		struct mt7996_sta_link *msta_link;
+ 		struct mt7996_vif_link *link;
+ 
+-		msta_link = mt76_dereference(msta->link[link_id], &dev->mt76);
++		msta_link = mt7996_sta_link_protected(dev, msta, link_id);
+ 		if (!msta_link)
+ 			continue;
+ 
+@@ -2200,7 +2200,7 @@ int mt7996_mcu_set_fixed_field(struct m
+ 	if (!mlink)
+ 		goto error_unlock;
+ 
+-	msta_link = rcu_dereference(msta->link[link_id]);
++	msta_link = mt7996_sta_link(msta, link_id);
+ 	if (!msta_link)
+ 		goto error_unlock;
+ 
+@@ -2290,7 +2290,7 @@ mt7996_mcu_add_rate_ctrl_fixed(struct m
+ 	if (!link)
+ 		goto error_unlock;
+ 
+-	msta_link = rcu_dereference(msta->link[link_id]);
++	msta_link = mt7996_sta_link(msta, link_id);
+ 	if (!msta_link)
+ 		goto error_unlock;
+ 
+@@ -2508,7 +2508,7 @@ int mt7996_mcu_add_rate_ctrl(struct mt7
+ 	if (!link)
+ 		goto error_unlock;
+ 
+-	msta_link = rcu_dereference(msta->link[link_id]);
++	msta_link = mt7996_sta_link(msta, link_id);
+ 	if (!msta_link)
+ 		goto error_unlock;
+ 
+@@ -2663,7 +2663,7 @@ mt7996_mcu_sta_mld_setup_tlv(struct mt7
+ 	unsigned int link_id;
+ 	struct tlv *tlv;
+ 
+-	msta_link = mt76_dereference(msta->link[msta->deflink_id], &dev->mt76);
++	msta_link = mt7996_sta_link_protected(dev, msta, msta->deflink_id);
+ 	if (!msta_link)
+ 		return;
+ 
+@@ -2677,8 +2677,8 @@ mt7996_mcu_sta_mld_setup_tlv(struct mt7
+ 	mld_setup->primary_id = cpu_to_le16(msta_link->wcid.idx);
+ 
+ 	if (nlinks > 1) {
+-		msta_link = mt76_dereference(msta->link[msta->seclink_id],
+-					     &dev->mt76);
++		msta_link = mt7996_sta_link_protected(dev, msta,
++						      msta->seclink_id);
+ 		if (!msta_link)
+ 			return;
+ 	}
+@@ -2689,7 +2689,7 @@ mt7996_mcu_sta_mld_setup_tlv(struct mt7
+ 	for_each_sta_active_link(vif, sta, link_sta, link_id) {
+ 		struct mt7996_vif_link *link;
+ 
+-		msta_link = mt76_dereference(msta->link[link_id], &dev->mt76);
++		msta_link = mt7996_sta_link_protected(dev, msta, link_id);
+ 		if (!msta_link)
+ 			continue;
+ 
+@@ -2837,7 +2837,7 @@ void mt7996_mcu_update_sta_rec_bw(void
+ 	if (!link_sta)
+ 		return;
+ 
+-	msta_link = mt76_dereference(msta->link[link_id], &dev->mt76);
++	msta_link = mt7996_sta_link_protected(dev, msta, link_id);
+ 	if (!msta_link)
+ 		return;
+ 
+--- a/drivers/net/wireless/mediatek/mt76/mt7996/mt7996.h
++++ b/drivers/net/wireless/mediatek/mt76/mt7996/mt7996.h
+@@ -642,6 +642,25 @@ mt7996_vif_conf_link(struct mt7996_dev
+ 					    link_conf);
+ }
+ 
++static inline struct mt7996_sta_link *
++mt7996_sta_link(struct mt7996_sta *msta, u8 link_id)
++{
++	if (link_id >= IEEE80211_MLD_MAX_NUM_LINKS)
++		return NULL;
++
++	return rcu_dereference(msta->link[link_id]);
++}
++
++static inline struct mt7996_sta_link *
++mt7996_sta_link_protected(struct mt7996_dev *dev, struct mt7996_sta *msta,
++			  u8 link_id)
++{
++	if (link_id >= IEEE80211_MLD_MAX_NUM_LINKS)
++		return NULL;
++
++	return mt76_dereference(msta->link[link_id], &dev->mt76);
++}
++
+ #define mt7996_for_each_phy(dev, phy)					\
+ 	for (int __i = 0; __i < ARRAY_SIZE((dev)->radio_phy); __i++)	\
+ 		if (((phy) = (dev)->radio_phy[__i]) != NULL)
