@@ -25,8 +25,8 @@ Link: https://patchwork.kernel.org/project/linux-wireless/patch/20260324154904.2
  drivers/net/wireless/mediatek/mt76/mt7996/mt7996.h  | 19 +++++++++++++++++++
  5 files changed, 40 insertions(+), 21 deletions(-)
 
---- a/drivers/net/wireless/mediatek/mt76/mt7996/debugfs.c
-+++ b/drivers/net/wireless/mediatek/mt76/mt7996/debugfs.c
+--- a/mt7996/debugfs.c
++++ b/mt7996/debugfs.c
 @@ -664,7 +664,7 @@ mt7996_sta_hw_queue_read(void *data, st
  		if (!mlink)
  			continue;
@@ -45,8 +45,8 @@ Link: https://patchwork.kernel.org/project/linux-wireless/patch/20260324154904.2
  	if (!msta_link) {
  		ret = -EINVAL;
  		goto out;
---- a/drivers/net/wireless/mediatek/mt76/mt7996/mac.c
-+++ b/drivers/net/wireless/mediatek/mt76/mt7996/mac.c
+--- a/mt7996/mac.c
++++ b/mt7996/mac.c
 @@ -48,7 +48,7 @@ static struct mt76_wcid *mt7996_rx_get_
  		if (mlink->band_idx != band_idx)
  			continue;
@@ -74,8 +74,8 @@ Link: https://patchwork.kernel.org/project/linux-wireless/patch/20260324154904.2
  				if (!msta_link)
  					continue;
  
---- a/drivers/net/wireless/mediatek/mt76/mt7996/main.c
-+++ b/drivers/net/wireless/mediatek/mt76/mt7996/main.c
+--- a/mt7996/main.c
++++ b/mt7996/main.c
 @@ -207,8 +207,7 @@ mt7996_set_hw_key(struct ieee80211_hw *
  		struct mt7996_sta *msta;
  
@@ -149,8 +149,8 @@ Link: https://patchwork.kernel.org/project/linux-wireless/patch/20260324154904.2
  	if (!msta_link)
  		return -EIO;
  
---- a/drivers/net/wireless/mediatek/mt76/mt7996/mcu.c
-+++ b/drivers/net/wireless/mediatek/mt76/mt7996/mcu.c
+--- a/mt7996/mcu.c
++++ b/mt7996/mcu.c
 @@ -1136,7 +1136,7 @@ mt7996_mcu_bss_basic_tlv(struct sk_buff
  			struct mt7996_sta_link *msta_link;
  			int link_id = link_conf->link_id;
@@ -243,8 +243,8 @@ Link: https://patchwork.kernel.org/project/linux-wireless/patch/20260324154904.2
  	if (!msta_link)
  		return;
  
---- a/drivers/net/wireless/mediatek/mt76/mt7996/mt7996.h
-+++ b/drivers/net/wireless/mediatek/mt76/mt7996/mt7996.h
+--- a/mt7996/mt7996.h
++++ b/mt7996/mt7996.h
 @@ -642,6 +642,25 @@ mt7996_vif_conf_link(struct mt7996_dev
  					    link_conf);
  }
