@@ -1,0 +1,33 @@
+From: hzyitc <hzyitc@outlook.com>
+Date: Sun, 30 Mar 2026 15:44:32 +0000
+Subject: [PATCH] net: airoha: npu: use request_firmware_direct() to avoid
+ userspace helper timeout
+
+The NPU driver loads before rootfs (squashfs) is mounted. When
+CONFIG_FW_LOADER_USER_HELPER=y (pulled in by kmod-leds-lp5523 via
+CONFIG_ALL_KMODS=y), request_firmware() sends a uevent and waits 60s
+for a userspace helper that doesn't exist yet, then times out with
+-ETIMEDOUT causing the probe to fail.
+
+Use request_firmware_direct() which skips the userspace fallback path.
+The firmware will still be found via the kernel's built-in firmware
+search paths once rootfs is available (via deferred probe).
+
+Link: https://github.com/openwrt/openwrt/pull/22697
+Link: https://github.com/openwrt/openwrt/issues/22709
+Signed-off-by: hzyitc <hzyitc@outlook.com>
+---
+ drivers/net/ethernet/airoha/airoha_npu.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/drivers/net/ethernet/airoha/airoha_npu.c
++++ b/drivers/net/ethernet/airoha/airoha_npu.c
+@@ -202,7 +202,7 @@ static int airoha_npu_load_firmware(stru
+ 	const struct firmware *fw;
+ 	int ret;
+ 
+-	ret = request_firmware(&fw, fw_name, dev);
++	ret = request_firmware_direct(&fw, fw_name, dev);
+ 	if (ret)
+ 		return ret == -ENOENT ? -EPROBE_DEFER : ret;
+ 
