@@ -1,0 +1,42 @@
+From: Joel Wiramu Pauling <aenertia@aenertia.net>
+Date: Thu, 03 Apr 2026 13:00:00 +1300
+Subject: [PATCH] net: phy: create phy_package.h for SoC PHY drivers
+
+In Linux 6.18, struct phy_package_shared was made opaque. Create an
+internal header with the struct definition so SoC PHY drivers that
+need direct priv access can include it.
+
+Signed-off-by: Joel Wiramu Pauling <aenertia@aenertia.net>
+---
+ drivers/net/phy/phy_package.h | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+ create mode 100644 drivers/net/phy/phy_package.h
+
+--- /dev/null
++++ b/drivers/net/phy/phy_package.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _PHY_PACKAGE_H
++#define _PHY_PACKAGE_H
++
++#include <linux/phy.h>
++
++struct phy_package_shared {
++	u8 base_addr;
++	/* With PHY package defined in DT this points to the PHY package node */
++	struct device_node *np;
++	refcount_t refcnt;
++	unsigned long flags;
++	size_t priv_size;
++
++	/* private data pointer */
++	/* note that this pointer is shared between different phydevs and
++	 * the user has to take care of appropriate locking. It is allocated
++	 * and freed automatically by phy_package_join() and
++	 * phy_package_leave().
++	 */
++	void *priv;
++};
++
++#endif /* _PHY_PACKAGE_H */
+

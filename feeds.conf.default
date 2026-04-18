@@ -6,3 +6,5 @@ src-git video https://github.com/openwrt/video.git
 #src-git targets https://github.com/openwrt/targets.git
 #src-git oldpackages http://git.openwrt.org/packages.git
 #src-link custom /usr/src/openwrt/custom-feed
+# LuCI Podman UI (v1.13.0) — custom feed from local Forgejo
+src-git custom https://git.awa.3d.ae.net.nz/aenertia/luci-app-podman.git

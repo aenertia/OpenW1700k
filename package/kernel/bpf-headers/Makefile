@@ -13,7 +13,7 @@ include $(INCLUDE_DIR)/kernel.mk
 
 
 PKG_NAME:=linux
-PKG_PATCHVER:=6.12
+PKG_PATCHVER:=6.18
 
 # Manually include kernel version and hash from kernel details file
 GENERIC_PLATFORM_DIR := $(CURDIR)/../../../target/linux/generic
@@ -55,7 +55,7 @@ KERNEL_MAKE := \
 		ARCH=$(BPF_KARCH) \
 		CROSS_COMPILE=$(BPF_ARCH)-linux- \
 		LLVM=1 KBUILD_SYM32=n \
-		CC="$(CLANG) --target=$(BPF_TARGET)" \
+		CC="$(CLANG) --target=$(BPF_TARGET) -Wno-unused-command-line-argument" \
 		LD="$(TARGET_CROSS)ld" \
 		HOSTCC="$(HOSTCC)" \
 		HOSTCXX="$(HOSTCXX)" \
