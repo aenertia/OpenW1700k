@@ -1,0 +1,215 @@
+#!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright: Joel Wirāmu Pauling <aenertia@aenertia.net>
+#
+# Artifact Name: airoha-ebpf.init
+# Purpose: Procd init script to mount BPF filesystem, attach the XDP
+#          classifier to physical interfaces, and launch the sync daemon.
+#
+# W1700K UBI DTS interface names: wan, lan2, lan3, lan4
+
+START=95
+USE_PROCD=1
+
+BPF_OBJ="/lib/bpf/airoha_hybrid_offload.o"
+BPF_SEC="xdp"
+BPF_PIN="/sys/fs/bpf"
+
+# Physical interfaces on W1700K (UBI DTS naming)
+# Only native-XDP-capable GDM ports; lan3/lan4 are DSA user ports
+# that fall back to xdpgeneric (no ndo_bpf) and break bridge delivery.
+IFACES="wan lan2"
+
+start_service() {
+	# Ensure BPF filesystem is mounted
+	if ! mount | grep -q "$BPF_PIN"; then
+		mount -t bpf bpf "$BPF_PIN"
+	fi
+
+	# === cgroup v2 setup for uclamp (schedutil integration) ===
+	if [ -d /sys/fs/cgroup ]; then
+		# Write controllers separately to avoid "Result not representable"
+		echo "+cpu" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null
+		echo "+cpuset" >> /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null
+
+		# Network processing cgroup (NAPI + IRQ threads)
+		mkdir -p /sys/fs/cgroup/netdev
+		echo "0-3" > /sys/fs/cgroup/netdev/cpuset.cpus 2>/dev/null
+		echo "0"   > /sys/fs/cgroup/netdev/cpuset.mems 2>/dev/null
+
+		# Background/system cgroup
+		mkdir -p /sys/fs/cgroup/system
+		echo "0-3" > /sys/fs/cgroup/system/cpuset.cpus 2>/dev/null
+		echo "0"   > /sys/fs/cgroup/system/cpuset.mems 2>/dev/null
+
+		# uclamp values only meaningful when cpufreq governor is active.
+		# AN7581 cpufreq-dt fails to register (SMCCC clk issue), so
+		# these writes fail with "Result not representable". Guard them.
+		if [ -d /sys/devices/system/cpu/cpufreq ]; then
+			[ -f /sys/fs/cgroup/netdev/cpu.uclamp.min ] && \
+				echo 600  > /sys/fs/cgroup/netdev/cpu.uclamp.min
+			[ -f /sys/fs/cgroup/netdev/cpu.uclamp.max ] && \
+				echo 1024 > /sys/fs/cgroup/netdev/cpu.uclamp.max
+			[ -f /sys/fs/cgroup/system/cpu.uclamp.max ] && \
+				echo 768 > /sys/fs/cgroup/system/cpu.uclamp.max
+		fi
+
+		# Move NAPI and IRQ threads to netdev cgroup
+		for pid in $(pgrep -f "napi/|irq/" 2>/dev/null); do
+			echo "$pid" > /sys/fs/cgroup/netdev/cgroup.procs 2>/dev/null
+		done
+
+		logger -t airoha-ebpf "cgroup v2 uclamp configured"
+	fi
+
+	# === Bind fq qdisc for BBR pacing on loopback ===
+	# BBR pacing requires fq; forwarding uses mq+fq_codel (default)
+	tc qdisc replace dev lo root fq 2>/dev/null
+
+	# Attach XDP program to each physical interface and pin maps
+	local first_iface=""
+	for iface in $IFACES; do
+		if ip link show dev "$iface" >/dev/null 2>&1; then
+			logger -t airoha-ebpf "attaching XDP to $iface"
+			ip link set dev "$iface" xdp obj "$BPF_OBJ" sec "$BPF_SEC" 2>/dev/null || \
+				logger -t airoha-ebpf "failed to attach XDP to $iface"
+			[ -z "$first_iface" ] && first_iface="$iface"
+		fi
+	done
+
+	# Pin BPF maps so the sync daemon can find them.
+	# The maps are created by the first XDP load; we pin them from the
+	# program's map FDs using bpftool.
+	if [ -n "$first_iface" ] && command -v bpftool >/dev/null 2>&1; then
+		local prog_id
+		prog_id=$(bpftool net show dev "$first_iface" 2>/dev/null | \
+			  grep -o 'id [0-9]*' | head -1 | awk '{print $2}')
+		if [ -n "$prog_id" ]; then
+			# Get map IDs from the program and pin each by name
+			bpftool prog show id "$prog_id" 2>/dev/null | \
+				grep 'map_ids' | tr ',' ' ' | grep -o '[0-9]*' | \
+				while read map_id; do
+					local map_name
+					map_name=$(bpftool map show id "$map_id" 2>/dev/null | \
+						   head -1 | sed -n 's/.*name \([^ ]*\).*/\1/p')
+					if [ -n "$map_name" ]; then
+						bpftool map pin id "$map_id" \
+							"$BPF_PIN/$map_name" 2>/dev/null
+					fi
+				done
+			logger -t airoha-ebpf "pinned BPF maps from prog id $prog_id"
+		fi
+	elif [ -n "$first_iface" ]; then
+		logger -t airoha-ebpf "bpftool not found, maps not pinned"
+	fi
+
+	# === Attach TC-BPF classifier to MTK DSA user ports (lan3, lan4) ===
+	# lan3/lan4 use xdpgeneric (no ndo_bpf) and break bridge delivery with
+	# native XDP.  TC-BPF classifies their ingress traffic and writes
+	# skb->mark, sharing ring-buffer and DSCP maps with the XDP program.
+	# Maps are reused from the XDP-pinned paths so the daemon sees a
+	# unified flow event stream from both interfaces.
+	local TC_OBJ="/lib/bpf/airoha_dsa_classify.o"
+	for iface in lan3 lan4; do
+		if ip link show "$iface" > /dev/null 2>&1; then
+			tc qdisc add dev "$iface" clsact 2>/dev/null || true
+			if [ -e "$BPF_PIN/flow_event_rb" ] && \
+			   [ -e "$BPF_PIN/dscp_class_map" ]; then
+				tc filter add dev "$iface" ingress bpf da \
+					obj "$TC_OBJ" sec tc \
+					map name flow_event_rb \
+						pinned "$BPF_PIN/flow_event_rb" \
+					map name dscp_class_map \
+						pinned "$BPF_PIN/dscp_class_map" \
+					2>/dev/null || \
+				logger -t airoha-ebpf \
+					"failed to attach TC+pinned-maps to $iface, trying standalone"
+				# Verify filter was actually attached
+				if ! tc filter show dev "$iface" ingress 2>/dev/null | \
+				   grep -q bpf; then
+					# Fallback: attach without map pinning
+					# (maps will be private; daemon won't see events
+					#  but classification marks still set)
+					tc filter add dev "$iface" ingress bpf da \
+						obj "$TC_OBJ" sec tc 2>/dev/null || \
+					logger -t airoha-ebpf \
+						"failed to attach TC to $iface"
+				fi
+			else
+				# XDP maps not yet pinned — attach with own maps
+				tc filter add dev "$iface" ingress bpf da \
+					obj "$TC_OBJ" sec tc 2>/dev/null || \
+				logger -t airoha-ebpf \
+					"failed to attach TC (no-pin) to $iface"
+			fi
+			logger -t airoha-ebpf "TC-BPF attached to $iface"
+		fi
+	done
+
+	# === 10G Network Performance Tuning (Phase 6) ===
+	# The QDMA has 32 RX/TX queues but only 1 active IRQ (airoha_eth.0).
+	# All packets funnel through CPU0 by default. RPS distributes across
+	# all 4 A53 cores. XPS gives each CPU its own set of TX queues for
+	# cache locality. NAPI busy-poll reduces interrupt overhead on 10G.
+
+	# NAPI busy-poll: defer 2 IRQs, GRO flush at 20us
+	for iface in eth0 wan lan2; do
+		[ -d /sys/class/net/$iface ] || continue
+		echo 2     > /sys/class/net/$iface/napi_defer_hard_irqs 2>/dev/null
+		echo 20000 > /sys/class/net/$iface/gro_flush_timeout 2>/dev/null
+	done
+
+	# RPS: distribute RX across all 4 CPUs (bitmask 0xf)
+	for iface in eth0 wan lan2; do
+		for q in /sys/class/net/$iface/queues/rx-*/rps_cpus; do
+			[ -f "$q" ] && echo f > "$q" 2>/dev/null
+		done
+	done
+
+	# XPS: distribute TX queues across CPUs (8 queues per CPU)
+	for iface in eth0 wan lan2; do
+		[ -d /sys/class/net/$iface ] || continue
+		for i in $(seq 0 7);   do [ -f /sys/class/net/$iface/queues/tx-$i/xps_cpus ] && echo 1 > /sys/class/net/$iface/queues/tx-$i/xps_cpus 2>/dev/null; done
+		for i in $(seq 8 15);  do [ -f /sys/class/net/$iface/queues/tx-$i/xps_cpus ] && echo 2 > /sys/class/net/$iface/queues/tx-$i/xps_cpus 2>/dev/null; done
+		for i in $(seq 16 23); do [ -f /sys/class/net/$iface/queues/tx-$i/xps_cpus ] && echo 4 > /sys/class/net/$iface/queues/tx-$i/xps_cpus 2>/dev/null; done
+		for i in $(seq 24 31); do [ -f /sys/class/net/$iface/queues/tx-$i/xps_cpus ] && echo 8 > /sys/class/net/$iface/queues/tx-$i/xps_cpus 2>/dev/null; done
+	done
+
+	# RPS flow hash table for flow-consistent CPU assignment
+	echo 32768 > /proc/sys/net/core/rps_sock_flow_entries 2>/dev/null
+	for iface in eth0 wan lan2; do
+		for q in /sys/class/net/$iface/queues/rx-*/rps_flow_cnt; do
+			[ -f "$q" ] && echo 1024 > "$q" 2>/dev/null
+		done
+	done
+
+	logger -t airoha-ebpf "RPS/XPS/NAPI tuning applied (Phase 6)"
+
+	# Start sync daemon via procd
+	procd_open_instance
+	procd_set_param command /usr/sbin/airoha-sync-daemon
+	procd_set_param respawn 3600 5 0
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+stop_service() {
+	# Detach TC-BPF from DSA user ports (must precede XDP teardown so
+	# the shared ring buffer FD stays alive until both are done)
+	for iface in lan3 lan4; do
+		tc qdisc del dev "$iface" clsact 2>/dev/null || true
+	done
+
+	# Detach XDP from all interfaces
+	for iface in $IFACES; do
+		ip link set dev "$iface" xdp off 2>/dev/null || true
+	done
+
+	# Clean up pinned maps
+	rm -f "$BPF_PIN"/iface_offload_map
+	rm -f "$BPF_PIN"/mac_fdb_map
+	rm -f "$BPF_PIN"/port_to_bridge_map
+	rm -f "$BPF_PIN"/flow_event_rb
+	rm -f "$BPF_PIN"/dscp_class_map
+}
